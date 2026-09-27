@@ -12,6 +12,7 @@ public sealed class FbxSession : IDisposable
 
     public string FilePath { get; private set; } = string.Empty;
     public Scene? Scene { get; private set; }
+    public int DuplicateModelNamesFixed { get; private set; }
     public List<ScenePart> Parts { get; } = new();
     public List<AnimationTake> Animations { get; } = new();
     public IReadOnlyDictionary<string, Node> NodesByName => _nodesByName;
@@ -34,6 +35,9 @@ public sealed class FbxSession : IDisposable
         var stagedFbx = StageFbxForNativeImport(FilePath);
         try
         {
+            DuplicateModelNamesFixed =
+                FbxBinarySanitizer.MakeDuplicateModelNamesUnique(stagedFbx);
+
             Scene = _context.ImportFile(
                 stagedFbx,
                 PostProcessSteps.Triangulate |
@@ -287,6 +291,7 @@ public sealed class FbxSession : IDisposable
     {
         Scene = null;
         FilePath = string.Empty;
+        DuplicateModelNamesFixed = 0;
         Parts.Clear();
         Animations.Clear();
         _nodesByName.Clear();
