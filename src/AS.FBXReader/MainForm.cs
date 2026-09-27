@@ -23,7 +23,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.1.4";
+        Text = "AS_FBX-reader 0.1.5";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -99,6 +99,11 @@ public sealed class MainForm : Form
         _parts.CheckOnClick = true;
         _parts.IntegralHeight = false;
         _parts.AllowDrop = true;
+
+        var partMenu = new ContextMenuStrip();
+        partMenu.Items.Add("Rename alias...", null, (_, _) => RenameSelectedPart());
+        partMenu.Items.Add("Clear alias", null, (_, _) => ClearSelectedAlias());
+        _parts.ContextMenuStrip = partMenu;
         split.Panel1.Controls.Add(_parts);
         split.Panel1.Controls.Add(leftButtons);
         split.Panel2.Controls.Add(_viewer);
@@ -139,11 +144,16 @@ public sealed class MainForm : Form
 
         _parts.MouseDown += (_, e) =>
         {
-            _dragPartIndex = _parts.IndexFromPoint(e.Location);
-            if (_dragPartIndex < 0 || _dragPartIndex >= _parts.Items.Count)
+            var index = _parts.IndexFromPoint(e.Location);
+            if (index < 0 || index >= _parts.Items.Count)
                 return;
 
-            _parts.SelectedIndex = _dragPartIndex;
+            _parts.SelectedIndex = index;
+
+            if (e.Button != MouseButtons.Left)
+                return;
+
+            _dragPartIndex = index;
             _parts.DoDragDrop(_parts.Items[_dragPartIndex]!, DragDropEffects.Move);
         };
 
@@ -176,6 +186,19 @@ public sealed class MainForm : Form
 
             MovePart(_dragPartIndex, targetIndex);
             _dragPartIndex = -1;
+        };
+
+        _viewer.PartPicked += (_, part) =>
+        {
+            var index = _session.Parts.IndexOf(part);
+            if (index < 0 || index >= _parts.Items.Count)
+                return;
+
+            _parts.SelectedIndex = index;
+
+            // Ensure the selected row is visible in the scrolling list.
+            _parts.TopIndex = Math.Max(0, Math.Min(index, _parts.Items.Count - 1));
+            _status.Text = $"Selected from preview: {part.DisplayName}";
         };
 
         _animations.SelectedIndexChanged += (_, _) =>
@@ -281,6 +304,123 @@ public sealed class MainForm : Form
         _viewer.InvalidateScene();
     }
 
+    private void RenameSelectedPart()
+    {
+        if (_parts.SelectedIndex < 0 ||
+            _parts.SelectedIndex >= _session.Parts.Count)
+        {
+            return;
+        }
+
+        var part = _session.Parts[_parts.SelectedIndex];
+        var alias = PromptForAlias(
+            "Rename mesh alias",
+            $"Original: {part.Name}",
+            part.Alias ?? string.Empty);
+
+        if (alias is null)
+            return;
+
+        part.Alias = string.IsNullOrWhiteSpace(alias)
+            ? null
+            : alias.Trim();
+
+        RebuildPartList();
+        var index = _session.Parts.IndexOf(part);
+        if (index >= 0)
+            _parts.SelectedIndex = index;
+
+        _status.Text = string.IsNullOrWhiteSpace(part.Alias)
+            ? $"Alias cleared: {part.Name}"
+            : $"Alias: {part.Alias}  <-  {part.Name}";
+    }
+
+    private void ClearSelectedAlias()
+    {
+        if (_parts.SelectedIndex < 0 ||
+            _parts.SelectedIndex >= _session.Parts.Count)
+        {
+            return;
+        }
+
+        var part = _session.Parts[_parts.SelectedIndex];
+        part.Alias = null;
+        RebuildPartList();
+
+        var index = _session.Parts.IndexOf(part);
+        if (index >= 0)
+            _parts.SelectedIndex = index;
+
+        _status.Text = $"Alias cleared: {part.Name}";
+    }
+
+    private string? PromptForAlias(string title, string description, string currentValue)
+    {
+        using var dialog = new Form
+        {
+            Text = title,
+            Width = 520,
+            Height = 190,
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MinimizeBox = false,
+            MaximizeBox = false,
+            ShowInTaskbar = false,
+            AutoScaleMode = AutoScaleMode.Font,
+            Font = Font
+        };
+
+        var label = new Label
+        {
+            Text = description,
+            AutoSize = false,
+            Left = 14,
+            Top = 14,
+            Width = 470,
+            Height = 30
+        };
+
+        var input = new TextBox
+        {
+            Left = 14,
+            Top = 48,
+            Width = 470,
+            Text = currentValue
+        };
+
+        var ok = new Button
+        {
+            Text = "OK",
+            DialogResult = DialogResult.OK,
+            Left = 314,
+            Top = 92,
+            Width = 80
+        };
+
+        var cancel = new Button
+        {
+            Text = "Cancel",
+            DialogResult = DialogResult.Cancel,
+            Left = 404,
+            Top = 92,
+            Width = 80
+        };
+
+        dialog.Controls.AddRange([label, input, ok, cancel]);
+        dialog.AcceptButton = ok;
+        dialog.CancelButton = cancel;
+
+        dialog.Shown += (_, _) =>
+        {
+            input.Focus();
+            input.SelectAll();
+        };
+
+        return dialog.ShowDialog(this) == DialogResult.OK
+            ? input.Text
+            : null;
+    }
+
     private void MovePart(int fromIndex, int toIndex)
     {
         if (fromIndex < 0 || fromIndex >= _session.Parts.Count ||
@@ -368,7 +508,10 @@ public sealed class MainForm : Form
             SourceFbx = Path.GetFileName(_session.FilePath),
             Animation = (_animations.SelectedItem as AnimationTake)?.Name,
             HiddenPartIds = _session.Parts.Where(p => !p.Visible).Select(p => p.Id).ToList(),
-            PartOrderIds = _session.Parts.Select(p => p.Id).ToList()
+            PartOrderIds = _session.Parts.Select(p => p.Id).ToList(),
+            PartAliases = _session.Parts
+                .Where(p => !string.IsNullOrWhiteSpace(p.Alias))
+                .ToDictionary(p => p.Id, p => p.Alias!, StringComparer.Ordinal)
         }.Save(dialog.FileName);
     }
 
@@ -387,6 +530,14 @@ public sealed class MainForm : Form
 
         if (profile.PartOrderIds.Count > 0)
             ApplyPartOrder(profile.PartOrderIds);
+
+        foreach (var part in _session.Parts)
+        {
+            part.Alias = profile.PartAliases.TryGetValue(part.Id, out var alias)
+                ? alias
+                : null;
+        }
+        RebuildPartList();
 
         var hidden = profile.HiddenPartIds.ToHashSet(StringComparer.Ordinal);
         for (var i = 0; i < _session.Parts.Count; i++)
