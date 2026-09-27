@@ -19,11 +19,15 @@ public sealed class SceneRenderer : IDisposable
     private int _vbo;
     private int _ebo;
     private bool _initialized;
-    private float _zoom = 1.0f;
     private readonly TextureCache _textures = new();
     private bool _premultiplyAlpha = true;
+    private bool _transparentBackground;
+    private Color _backgroundColor = Color.FromArgb(28, 28, 28);
+    private FramingState _framing = new();
 
     public bool PremultiplyAlpha => _premultiplyAlpha;
+    public bool TransparentBackground => _transparentBackground;
+    public Color BackgroundColor => _backgroundColor;
 
     public void SetPremultiplyAlpha(bool enabled)
     {
@@ -63,6 +67,51 @@ public sealed class SceneRenderer : IDisposable
     {
         _session = session;
         _player = player;
+        _framing = new FramingState();
+    }
+
+    public void SetBackground(bool transparent, Color color)
+    {
+        _transparentBackground = transparent;
+        _backgroundColor = color;
+    }
+
+    public FramingState CaptureFramingReference()
+    {
+        var prepared = PrepareVisibleParts();
+        var extents = EstimateExtents(prepared);
+
+        _framing = new FramingState
+        {
+            Enabled = true,
+            ReferenceMinX = extents.Min.X,
+            ReferenceMaxX = extents.Max.X,
+            ReferenceMinY = extents.Min.Y,
+            ReferenceMaxY = extents.Max.Y,
+            Zoom = 1f,
+            OffsetX = 0f,
+            OffsetY = 0f
+        };
+
+        return _framing.Clone();
+    }
+
+    public FramingState GetFraming() => _framing.Clone();
+
+    public void SetFraming(FramingState framing)
+    {
+        _framing = framing.Clone();
+        _framing.Zoom = Math.Clamp(_framing.Zoom, 0.05f, 20f);
+    }
+
+    public void SetFramingTransform(float zoom, float offsetX, float offsetY)
+    {
+        if (!_framing.Enabled)
+            CaptureFramingReference();
+
+        _framing.Zoom = Math.Clamp(zoom, 0.05f, 20f);
+        _framing.OffsetX = Math.Clamp(offsetX, -10f, 10f);
+        _framing.OffsetY = Math.Clamp(offsetY, -10f, 10f);
     }
 
     public ScenePart? PickPart(int screenX, int screenY, int width, int height)
@@ -116,7 +165,13 @@ public sealed class SceneRenderer : IDisposable
             Initialize();
 
         GL.Viewport(0, 0, width, height);
-        GL.ClearColor(0.11f, 0.11f, 0.11f, 1.0f);
+
+        var alpha = _transparentBackground ? 0f : 1f;
+        GL.ClearColor(
+            _backgroundColor.R / 255f,
+            _backgroundColor.G / 255f,
+            _backgroundColor.B / 255f,
+            alpha);
         GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
         if (_session?.Scene is null || _player is null)
@@ -184,12 +239,39 @@ public sealed class SceneRenderer : IDisposable
 
     private ViewBounds BuildView(IReadOnlyList<PreparedPart> prepared, int width, int height)
     {
-        var extents = EstimateExtents(prepared);
-        var center = (extents.Min + extents.Max) * 0.5f;
-        var spanX = Math.Max(0.001f, extents.Max.X - extents.Min.X);
-        var spanY = Math.Max(0.001f, extents.Max.Y - extents.Min.Y);
+        Vector3 min;
+        Vector3 max;
+
+        if (_framing.Enabled)
+        {
+            min = new Vector3(_framing.ReferenceMinX, _framing.ReferenceMinY, 0f);
+            max = new Vector3(_framing.ReferenceMaxX, _framing.ReferenceMaxY, 0f);
+        }
+        else
+        {
+            var extents = EstimateExtents(prepared);
+            min = extents.Min;
+            max = extents.Max;
+        }
+
+        var center = (min + max) * 0.5f;
+        var spanX = Math.Max(0.001f, max.X - min.X);
+        var spanY = Math.Max(0.001f, max.Y - min.Y);
         var aspect = width / (float)Math.Max(1, height);
-        var halfH = Math.Max(spanY * 0.58f, spanX / aspect * 0.58f) / _zoom;
+
+        var baseHalfH = Math.Max(spanY * 0.58f, spanX / aspect * 0.58f);
+        var baseHalfW = baseHalfH * aspect;
+        var zoom = _framing.Enabled ? Math.Max(0.05f, _framing.Zoom) : 1f;
+
+        // X/Y are artwork offsets, so moving the artwork right/up means moving
+        // the camera center in the opposite direction.
+        if (_framing.Enabled)
+        {
+            center.X -= _framing.OffsetX * baseHalfW;
+            center.Y -= _framing.OffsetY * baseHalfH;
+        }
+
+        var halfH = baseHalfH / zoom;
         var halfW = halfH * aspect;
 
         return new ViewBounds(
