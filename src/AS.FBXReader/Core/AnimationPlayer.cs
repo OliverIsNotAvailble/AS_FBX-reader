@@ -137,8 +137,9 @@ public sealed class AnimationPlayer
         var baseScale = Vector3.One;
         var baseRotation = Quaternion.Identity;
         var baseTranslation = Vector3.Zero;
+        var decomposable = System.Numerics.Matrix4x4.Transpose(node.Transform);
         if (System.Numerics.Matrix4x4.Decompose(
-                node.Transform,
+                decomposable,
                 out var scaleN,
                 out var rotationN,
                 out var translationN))
