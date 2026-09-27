@@ -30,6 +30,7 @@ public sealed class ExportDialog : Form
     private readonly ProgressBar _progress = new();
     private readonly Label _status = new();
     private readonly Panel _previewHost = new();
+    private readonly Panel _previewFrame = new();
 
     private Color _backgroundColor = Color.Black;
     private readonly int _originalAnimationIndex;
@@ -281,8 +282,14 @@ public sealed class ExportDialog : Form
         _previewHost.BackColor = Color.FromArgb(15, 15, 15);
         _previewHost.Padding = new Padding(12);
 
-        _preview.Dock = DockStyle.None;
-        _previewHost.Controls.Add(_preview);
+        // Red border = exact output frame. What is inside this box is
+        // what the selected resolution/aspect will export.
+        _previewFrame.BackColor = Color.Red;
+        _previewFrame.Padding = new Padding(2);
+
+        _preview.Dock = DockStyle.Fill;
+        _previewFrame.Controls.Add(_preview);
+        _previewHost.Controls.Add(_previewFrame);
         root.Panel2.Controls.Add(_previewHost);
 
         Controls.Add(root);
@@ -481,7 +488,7 @@ public sealed class ExportDialog : Form
         w = Math.Max(1, w);
         h = Math.Max(1, h);
 
-        _preview.Bounds = new Rectangle(
+        _previewFrame.Bounds = new Rectangle(
             (_previewHost.ClientSize.Width - w) / 2,
             (_previewHost.ClientSize.Height - h) / 2,
             w,
