@@ -9,6 +9,9 @@ public sealed class VisibilityProfile
     public string? Animation { get; set; }
     public List<string> HiddenPartIds { get; set; } = new();
 
+    // Front -> back, matching the UI list (top -> bottom).
+    public List<string> PartOrderIds { get; set; } = new();
+
     public static VisibilityProfile Load(string path)
         => JsonSerializer.Deserialize<VisibilityProfile>(
                File.ReadAllText(path),
