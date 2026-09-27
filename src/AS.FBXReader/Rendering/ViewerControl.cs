@@ -85,6 +85,35 @@ public sealed class ViewerControl : UserControl
     }
 
     public bool PremultiplyAlpha => _renderer.PremultiplyAlpha;
+    public bool TransparentBackground => _renderer.TransparentBackground;
+    public Color BackgroundColor => _renderer.BackgroundColor;
+
+    public void SetBackground(bool transparent, Color color)
+    {
+        _renderer.SetBackground(transparent, color);
+        _gl.Invalidate();
+    }
+
+    public FramingState ResetFraming()
+    {
+        var framing = _renderer.CaptureFramingReference();
+        _gl.Invalidate();
+        return framing;
+    }
+
+    public FramingState GetFraming() => _renderer.GetFraming();
+
+    public void SetFraming(FramingState framing)
+    {
+        _renderer.SetFraming(framing);
+        _gl.Invalidate();
+    }
+
+    public void SetFramingTransform(float zoom, float offsetX, float offsetY)
+    {
+        _renderer.SetFramingTransform(zoom, offsetX, offsetY);
+        _gl.Invalidate();
+    }
 
     public void SetPremultiplyAlpha(bool enabled)
     {
@@ -107,15 +136,63 @@ public sealed class ViewerControl : UserControl
         _renderer.Render(width, height);
 
         var bytes = new byte[width * height * 4];
-        GL.ReadPixels(0, 0, width, height, PixelFormat.Bgra, PixelType.UnsignedByte, bytes);
+        GL.ReadPixels(
+            0,
+            0,
+            width,
+            height,
+            PixelFormat.Bgra,
+            PixelType.UnsignedByte,
+            bytes);
 
-        var bitmap = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        // A transparent OpenGL compositing buffer stores premultiplied RGB.
+        // PNG/WebP expect straight alpha, so convert before System.Drawing saves.
+        if (_renderer.TransparentBackground)
+            UnpremultiplyBgra(bytes);
+
+        var bitmap = new Bitmap(
+            width,
+            height,
+            System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
         var rect = new Rectangle(0, 0, width, height);
-        var bits = bitmap.LockBits(rect, System.Drawing.Imaging.ImageLockMode.WriteOnly, bitmap.PixelFormat);
-        System.Runtime.InteropServices.Marshal.Copy(bytes, 0, bits.Scan0, bytes.Length);
+        var bits = bitmap.LockBits(
+            rect,
+            System.Drawing.Imaging.ImageLockMode.WriteOnly,
+            bitmap.PixelFormat);
+
+        System.Runtime.InteropServices.Marshal.Copy(
+            bytes,
+            0,
+            bits.Scan0,
+            bytes.Length);
+
         bitmap.UnlockBits(bits);
         bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
         return bitmap;
+    }
+
+    private static void UnpremultiplyBgra(byte[] pixels)
+    {
+        for (var i = 0; i + 3 < pixels.Length; i += 4)
+        {
+            var alpha = pixels[i + 3];
+
+            if (alpha == 0)
+            {
+                pixels[i + 0] = 0;
+                pixels[i + 1] = 0;
+                pixels[i + 2] = 0;
+                continue;
+            }
+
+            if (alpha == 255)
+                continue;
+
+            pixels[i + 0] = (byte)Math.Min(255, (pixels[i + 0] * 255 + alpha / 2) / alpha);
+            pixels[i + 1] = (byte)Math.Min(255, (pixels[i + 1] * 255 + alpha / 2) / alpha);
+            pixels[i + 2] = (byte)Math.Min(255, (pixels[i + 2] * 255 + alpha / 2) / alpha);
+        }
     }
 
     private void RenderNow()
