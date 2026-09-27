@@ -8,6 +8,8 @@ public sealed class VisibilityProfile
     public string SourceFbx { get; set; } = string.Empty;
     public string? Animation { get; set; }
     public List<string> HiddenPartIds { get; set; } = new();
+    public List<string> ForcedPartIds { get; set; } = new();
+    public List<VisibilityKeyframe> VisibilityKeys { get; set; } = new();
 
     // Front -> back. Kept for backwards compatibility with 0.1.4/0.1.5 profiles.
     public List<string> PartOrderIds { get; set; } = new();
