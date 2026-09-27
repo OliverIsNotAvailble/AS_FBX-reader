@@ -1,19 +1,20 @@
-using Assimp;
 using OpenTK.Mathematics;
 
 namespace AS.FBXReader.Core;
 
 public static class MatrixUtil
 {
-    public static Matrix4 ToOpenTk(Assimp.Matrix4x4 m)
+    // AssimpNetter 6.x uses System.Numerics for its math types.
+    public static Matrix4 ToOpenTk(System.Numerics.Matrix4x4 m)
         => new(
-            m.A1, m.A2, m.A3, m.A4,
-            m.B1, m.B2, m.B3, m.B4,
-            m.C1, m.C2, m.C3, m.C4,
-            m.D1, m.D2, m.D3, m.D4);
+            m.M11, m.M12, m.M13, m.M14,
+            m.M21, m.M22, m.M23, m.M24,
+            m.M31, m.M32, m.M33, m.M34,
+            m.M41, m.M42, m.M43, m.M44);
 
-    public static Vector3 ToOpenTk(Vector3D v) => new(v.X, v.Y, v.Z);
+    public static Vector3 ToOpenTk(System.Numerics.Vector3 v)
+        => new(v.X, v.Y, v.Z);
 
-    public static Quaternion ToOpenTk(Assimp.Quaternion q)
+    public static Quaternion ToOpenTk(System.Numerics.Quaternion q)
         => new(q.X, q.Y, q.Z, q.W);
 }
