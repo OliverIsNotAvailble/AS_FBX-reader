@@ -132,44 +132,116 @@ public sealed class ViewerControl : UserControl
         if (!_gl.HasValidContext)
             throw new InvalidOperationException("OpenGL context is not ready.");
 
+        width = Math.Max(1, width);
+        height = Math.Max(1, height);
+
         _gl.MakeCurrent();
-        _renderer.Render(width, height);
 
-        var bytes = new byte[width * height * 4];
-        GL.ReadPixels(
-            0,
-            0,
-            width,
-            height,
-            PixelFormat.Bgra,
-            PixelType.UnsignedByte,
-            bytes);
+        GL.GetInteger(GetPName.FramebufferBinding, out var previousFramebuffer);
 
-        // A transparent OpenGL compositing buffer stores premultiplied RGB.
-        // PNG/WebP expect straight alpha, so convert before System.Drawing saves.
-        if (_renderer.TransparentBackground)
-            UnpremultiplyBgra(bytes);
+        var framebuffer = GL.GenFramebuffer();
+        var colorTexture = GL.GenTexture();
 
-        var bitmap = new Bitmap(
-            width,
-            height,
-            System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        try
+        {
+            GL.BindTexture(TextureTarget.Texture2D, colorTexture);
+            GL.TexImage2D(
+                TextureTarget.Texture2D,
+                0,
+                PixelInternalFormat.Rgba8,
+                width,
+                height,
+                0,
+                PixelFormat.Rgba,
+                PixelType.UnsignedByte,
+                IntPtr.Zero);
 
-        var rect = new Rectangle(0, 0, width, height);
-        var bits = bitmap.LockBits(
-            rect,
-            System.Drawing.Imaging.ImageLockMode.WriteOnly,
-            bitmap.PixelFormat);
+            GL.TexParameter(
+                TextureTarget.Texture2D,
+                TextureParameterName.TextureMinFilter,
+                (int)TextureMinFilter.Linear);
+            GL.TexParameter(
+                TextureTarget.Texture2D,
+                TextureParameterName.TextureMagFilter,
+                (int)TextureMagFilter.Linear);
 
-        System.Runtime.InteropServices.Marshal.Copy(
-            bytes,
-            0,
-            bits.Scan0,
-            bytes.Length);
+            GL.BindFramebuffer(
+                FramebufferTarget.Framebuffer,
+                framebuffer);
 
-        bitmap.UnlockBits(bits);
-        bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
-        return bitmap;
+            GL.FramebufferTexture2D(
+                FramebufferTarget.Framebuffer,
+                FramebufferAttachment.ColorAttachment0,
+                TextureTarget.Texture2D,
+                colorTexture,
+                0);
+
+            var status = GL.CheckFramebufferStatus(
+                FramebufferTarget.Framebuffer);
+
+            if (status != FramebufferErrorCode.FramebufferComplete)
+            {
+                throw new InvalidOperationException(
+                    $"Offscreen framebuffer is incomplete: {status}");
+            }
+
+            GL.DrawBuffer(DrawBufferMode.ColorAttachment0);
+            GL.ReadBuffer(ReadBufferMode.ColorAttachment0);
+
+            _renderer.Render(width, height);
+
+            var bytes = new byte[width * height * 4];
+            GL.ReadPixels(
+                0,
+                0,
+                width,
+                height,
+                PixelFormat.Bgra,
+                PixelType.UnsignedByte,
+                bytes);
+
+            // OpenGL compositing buffers store premultiplied RGB when alpha is
+            // present. PNG/WebP expect straight-alpha pixels.
+            if (_renderer.TransparentBackground)
+                UnpremultiplyBgra(bytes);
+
+            var bitmap = new Bitmap(
+                width,
+                height,
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+            var rect = new Rectangle(0, 0, width, height);
+            var bits = bitmap.LockBits(
+                rect,
+                System.Drawing.Imaging.ImageLockMode.WriteOnly,
+                bitmap.PixelFormat);
+
+            System.Runtime.InteropServices.Marshal.Copy(
+                bytes,
+                0,
+                bits.Scan0,
+                bytes.Length);
+
+            bitmap.UnlockBits(bits);
+            bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
+            return bitmap;
+        }
+        finally
+        {
+            GL.BindFramebuffer(
+                FramebufferTarget.Framebuffer,
+                previousFramebuffer);
+
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+            GL.DeleteFramebuffer(framebuffer);
+            GL.DeleteTexture(colorTexture);
+
+            GL.Viewport(
+                0,
+                0,
+                Math.Max(1, _gl.ClientSize.Width),
+                Math.Max(1, _gl.ClientSize.Height));
+        }
     }
 
     private static void UnpremultiplyBgra(byte[] pixels)
