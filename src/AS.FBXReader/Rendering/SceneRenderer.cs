@@ -71,7 +71,7 @@ public sealed class SceneRenderer : IDisposable
         // the first triangle under the cursor.
         foreach (var item in prepared)
         {
-            var indices = item.Mesh.GetUnsignedIndices();
+            var indices = item.Mesh.GetUnsignedIndices().ToArray();
             for (var i = 0; i + 2 < indices.Length; i += 3)
             {
                 var ia = (int)indices[i];
