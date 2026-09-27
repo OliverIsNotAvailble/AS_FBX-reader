@@ -53,6 +53,51 @@ public sealed class SceneRenderer : IDisposable
         _player = player;
     }
 
+    public ScenePart? PickPart(int screenX, int screenY, int width, int height)
+    {
+        if (_session?.Scene is null || _player is null || width <= 0 || height <= 0)
+            return null;
+
+        var prepared = PrepareVisibleParts();
+        if (prepared.Count == 0)
+            return null;
+
+        var view = BuildView(prepared, width, height);
+        var worldX = view.Left + (screenX / (float)width) * (view.Right - view.Left);
+        var worldY = view.Top - (screenY / (float)height) * (view.Top - view.Bottom);
+        var point = new Vector2(worldX, worldY);
+
+        // UI order is front -> back, so hit-test in that same order and return
+        // the first triangle under the cursor.
+        foreach (var item in prepared)
+        {
+            var indices = item.Mesh.GetUnsignedIndices();
+            for (var i = 0; i + 2 < indices.Length; i += 3)
+            {
+                var ia = (int)indices[i];
+                var ib = (int)indices[i + 1];
+                var ic = (int)indices[i + 2];
+
+                if (ia < 0 || ib < 0 || ic < 0 ||
+                    ia >= item.Positions.Length ||
+                    ib >= item.Positions.Length ||
+                    ic >= item.Positions.Length)
+                {
+                    continue;
+                }
+
+                var a = new Vector2(item.Positions[ia].X, item.Positions[ia].Y);
+                var b = new Vector2(item.Positions[ib].X, item.Positions[ib].Y);
+                var c = new Vector2(item.Positions[ic].X, item.Positions[ic].Y);
+
+                if (PointInTriangle(point, a, b, c))
+                    return item.Part;
+            }
+        }
+
+        return null;
+    }
+
     public void Render(int width, int height)
     {
         if (!_initialized)
@@ -65,35 +110,13 @@ public sealed class SceneRenderer : IDisposable
         if (_session?.Scene is null || _player is null)
             return;
 
-        var prepared = new List<PreparedPart>(_session.Parts.Count);
-        foreach (var part in _session.Parts)
-        {
-            if (!part.Visible)
-                continue;
-
-            var node = _session.NodesByName.TryGetValue(part.NodeName, out var found)
-                ? found
-                : null;
-            if (node is null)
-                continue;
-
-            var mesh = _session.Scene.Meshes[part.MeshIndex];
-            var positions = GetWorldPositions(node, mesh);
-            prepared.Add(new PreparedPart(part, node, mesh, positions));
-        }
-
-        var extents = EstimateExtents(prepared);
-        var center = (extents.Min + extents.Max) * 0.5f;
-        var spanX = Math.Max(0.001f, extents.Max.X - extents.Min.X);
-        var spanY = Math.Max(0.001f, extents.Max.Y - extents.Min.Y);
-        var aspect = width / (float)Math.Max(1, height);
-        var halfH = Math.Max(spanY * 0.58f, spanX / aspect * 0.58f) / _zoom;
-        var halfW = halfH * aspect;
+        var prepared = PrepareVisibleParts();
+        var view = BuildView(prepared, width, height);
         var projection = Matrix4.CreateOrthographicOffCenter(
-            center.X - halfW,
-            center.X + halfW,
-            center.Y - halfH,
-            center.Y + halfH,
+            view.Left,
+            view.Right,
+            view.Bottom,
+            view.Top,
             -10000f,
             10000f);
 
@@ -118,6 +141,65 @@ public sealed class SceneRenderer : IDisposable
         GL.UseProgram(0);
     }
 
+
+    private List<PreparedPart> PrepareVisibleParts()
+    {
+        var prepared = new List<PreparedPart>(_session?.Parts.Count ?? 0);
+
+        if (_session?.Scene is null || _player is null)
+            return prepared;
+
+        foreach (var part in _session.Parts)
+        {
+            if (!part.Visible)
+                continue;
+
+            if (!_session.NodesByName.TryGetValue(part.NodeName, out var node) || node is null)
+                continue;
+
+            var mesh = _session.Scene.Meshes[part.MeshIndex];
+            prepared.Add(new PreparedPart(
+                part,
+                node,
+                mesh,
+                GetWorldPositions(node, mesh)));
+        }
+
+        return prepared;
+    }
+
+    private ViewBounds BuildView(IReadOnlyList<PreparedPart> prepared, int width, int height)
+    {
+        var extents = EstimateExtents(prepared);
+        var center = (extents.Min + extents.Max) * 0.5f;
+        var spanX = Math.Max(0.001f, extents.Max.X - extents.Min.X);
+        var spanY = Math.Max(0.001f, extents.Max.Y - extents.Min.Y);
+        var aspect = width / (float)Math.Max(1, height);
+        var halfH = Math.Max(spanY * 0.58f, spanX / aspect * 0.58f) / _zoom;
+        var halfW = halfH * aspect;
+
+        return new ViewBounds(
+            center.X - halfW,
+            center.X + halfW,
+            center.Y - halfH,
+            center.Y + halfH);
+    }
+
+    private static bool PointInTriangle(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
+    {
+        static float Sign(Vector2 p1, Vector2 p2, Vector2 p3)
+            => (p1.X - p3.X) * (p2.Y - p3.Y) -
+               (p2.X - p3.X) * (p1.Y - p3.Y);
+
+        var d1 = Sign(p, a, b);
+        var d2 = Sign(p, b, c);
+        var d3 = Sign(p, c, a);
+
+        const float epsilon = 0.00001f;
+        var hasNeg = d1 < -epsilon || d2 < -epsilon || d3 < -epsilon;
+        var hasPos = d1 > epsilon || d2 > epsilon || d3 > epsilon;
+        return !(hasNeg && hasPos);
+    }
 
     private void BindMaterial(int materialIndex)
     {
@@ -252,6 +334,12 @@ public sealed class SceneRenderer : IDisposable
 
         return (min, max);
     }
+
+    private readonly record struct ViewBounds(
+        float Left,
+        float Right,
+        float Bottom,
+        float Top);
 
     private sealed record PreparedPart(
         ScenePart Part,
