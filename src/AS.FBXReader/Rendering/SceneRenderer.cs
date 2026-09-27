@@ -220,7 +220,10 @@ public sealed class SceneRenderer : IDisposable
 
         foreach (var part in _session.Parts)
         {
-            if (!part.Visible)
+            if (!part.ShouldRender(
+                    _player.CurrentAnimationName,
+                    _player.TimeSeconds,
+                    _player.IsSourceVisible(part.NodeName)))
                 continue;
 
             if (!_session.NodesByName.TryGetValue(part.NodeName, out var node) || node is null)

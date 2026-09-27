@@ -127,7 +127,7 @@ public sealed class MainForm : Form
             Padding = new Padding(6, 7, 6, 5),
             WrapContents = false
         };
-        leftButtons.Controls.Add(Button("Show all", (_, _) => SetAll(true)));
+        leftButtons.Controls.Add(Button("Allow all", (_, _) => SetAll(true)));
         leftButtons.Controls.Add(Button("Hide all", (_, _) => SetAll(false)));
         leftButtons.Controls.Add(Button("Solo", (_, _) => SoloSelected()));
         leftButtons.Controls.Add(Button("New group", (_, _) => CreateRootGroup()));
@@ -411,8 +411,8 @@ public sealed class MainForm : Form
         _viewer.InvalidateScene();
 
         _status.Text = node.Tag is PartGroup group
-            ? $"{group.Name}: {(makeVisible ? "ON" : "OFF")} ({CountPartNodes(node)} parts)"
-            : $"{GetNodeDisplayName(node)}: {(makeVisible ? "ON" : "OFF")}";
+            ? $"{group.Name}: {(makeVisible ? "allowed" : "hidden")} ({CountPartNodes(node)} parts)"
+            : $"{GetNodeDisplayName(node)}: {(makeVisible ? "allowed (FBX controls timing)" : "hidden")}";
     }
 
     private void SetNodeVisibilityRecursive(TreeNode node, bool visible)
@@ -515,10 +515,16 @@ public sealed class MainForm : Form
             var duplicateNote = _session.DuplicateModelNamesFixed > 0
                 ? $" | {_session.DuplicateModelNamesFixed} duplicate FBX Model names isolated"
                 : string.Empty;
+            var bindNote = _player.RecoveredBoneOffsets > 0
+                ? $" | {_player.RecoveredBoneOffsets} broken skin binds recovered"
+                : string.Empty;
+            var scaleNote = _player.RestoredCollapsedMeshes > 0
+                ? $" | {_player.RestoredCollapsedMeshes} zero-scale meshes restored"
+                : string.Empty;
 
             _status.Text =
                 $"{Path.GetFileName(dialog.FileName)} | {_session.Parts.Count} parts | " +
-                $"{_session.Animations.Count} animations{duplicateNote} | drag parts into groups";
+                $"{_session.Animations.Count} animations{duplicateNote}{scaleNote}{bindNote} | drag parts into groups";
         }
         catch (Exception ex)
         {
@@ -593,12 +599,14 @@ public sealed class MainForm : Form
         {
             selectedParts.Clear();
             selectedParts.Add(selectedPart);
+            selectedPart.ForceVisible = true;
         }
 
         foreach (var part in _session.Parts)
             part.Visible = selectedParts.Contains(part);
 
         RefreshGroupStates();
+        RefreshPartNodeTexts();
         _viewer.InvalidateScene();
     }
 
@@ -803,8 +811,44 @@ public sealed class MainForm : Form
 
         var selected = _parts.SelectedNode;
 
-        if (selected?.Tag is ScenePart)
+        if (selected?.Tag is ScenePart part)
         {
+            if (_player.CurrentAnimationName is string take)
+            {
+                var seconds = Math.Round(_player.TimeSeconds, 3);
+                _partsMenu.Items.Add($"Set visible at {seconds:0.000}s", null,
+                    (_, _) => SetVisibilityKey(part, take, seconds, true));
+                _partsMenu.Items.Add($"Set hidden at {seconds:0.000}s", null,
+                    (_, _) => SetVisibilityKey(part, take, seconds, false));
+
+                var keys = part.VisibilityKeys
+                    .Where(x => x.Animation == take)
+                    .OrderBy(x => x.Seconds)
+                    .ToList();
+                if (keys.Count > 0)
+                {
+                    var remove = new ToolStripMenuItem("Remove timing key...");
+                    foreach (var key in keys)
+                    {
+                        var captured = key;
+                        remove.DropDownItems.Add(
+                            $"{key.Seconds:0.000}s: {(key.Visible ? "visible" : "hidden")}",
+                            null,
+                            (_, _) => RemoveVisibilityKey(part, captured));
+                    }
+                    _partsMenu.Items.Add(remove);
+                }
+                _partsMenu.Items.Add(new ToolStripSeparator());
+            }
+
+            _partsMenu.Items.Add(new ToolStripMenuItem(
+                "Force visible (ignore FBX swaps)",
+                null,
+                (_, _) => ToggleForceVisible(part))
+            {
+                Checked = part.ForceVisible
+            });
+            _partsMenu.Items.Add(new ToolStripSeparator());
             _partsMenu.Items.Add("Rename alias...", null, (_, _) => RenameSelectedPart());
             _partsMenu.Items.Add("Clear alias", null, (_, _) => ClearSelectedAlias());
             _partsMenu.Items.Add(new ToolStripSeparator());
@@ -818,6 +862,41 @@ public sealed class MainForm : Form
         }
 
         _partsMenu.Items.Add("New root group...", null, (_, _) => CreateRootGroup());
+    }
+
+    private void ToggleForceVisible(ScenePart part)
+    {
+        part.ForceVisible = !part.ForceVisible;
+        RefreshPartNodeTexts();
+        _viewer.InvalidateScene();
+        _status.Text = $"{part.Name}: {(part.ForceVisible ? "forced visible" : "FBX animation visibility")}";
+    }
+
+    private void SetVisibilityKey(ScenePart part, string take, double seconds, bool visible)
+    {
+        part.VisibilityKeys.RemoveAll(x =>
+            x.Animation == take && Math.Abs(x.Seconds - seconds) < 0.0005);
+        part.VisibilityKeys.Add(new VisibilityKeyframe
+        {
+            PartId = part.Id,
+            Animation = take,
+            Seconds = seconds,
+            Visible = visible
+        });
+        part.Visible = true;
+        part.ForceVisible = false;
+        RefreshGroupStates();
+        RefreshPartNodeTexts();
+        _viewer.InvalidateScene();
+        _status.Text = $"{part.Name}: {(visible ? "visible" : "hidden")} from {seconds:0.000}s in {take}";
+    }
+
+    private void RemoveVisibilityKey(ScenePart part, VisibilityKeyframe key)
+    {
+        part.VisibilityKeys.Remove(key);
+        RefreshPartNodeTexts();
+        _viewer.InvalidateScene();
+        _status.Text = $"Timing removed: {part.Name} at {key.Seconds:0.000}s";
     }
 
     private void RenameSelectedPart()
@@ -877,6 +956,15 @@ public sealed class MainForm : Form
             HiddenPartIds = _session.Parts
                 .Where(p => !p.Visible)
                 .Select(p => p.Id)
+                .ToList(),
+            ForcedPartIds = _session.Parts
+                .Where(p => p.ForceVisible)
+                .Select(p => p.Id)
+                .ToList(),
+            VisibilityKeys = _session.Parts
+                .SelectMany(p => p.VisibilityKeys)
+                .OrderBy(x => x.Animation)
+                .ThenBy(x => x.Seconds)
                 .ToList(),
             PartOrderIds = _session.Parts
                 .Select(p => p.Id)
@@ -961,8 +1049,14 @@ public sealed class MainForm : Form
         }
 
         var hidden = profile.HiddenPartIds.ToHashSet(StringComparer.Ordinal);
+        var forced = profile.ForcedPartIds.ToHashSet(StringComparer.Ordinal);
         foreach (var part in _session.Parts)
+        {
             part.Visible = !hidden.Contains(part.Id);
+            part.ForceVisible = forced.Contains(part.Id);
+            part.VisibilityKeys.Clear();
+            part.VisibilityKeys.AddRange(profile.VisibilityKeys.Where(x => x.PartId == part.Id));
+        }
 
         RefreshPartNodeTexts();
         RefreshGroupStates();

@@ -19,6 +19,25 @@ The viewer keeps the workflow simple:
 AssetStudio -> FBX + textures -> AS_FBX-reader -> choose take -> toggle parts -> export animation
 ```
 
+## Visibility during an animation
+
+A checked part is **allowed**. The reader follows the FBX mesh-scale 0/1 keys
+to switch that part on and off at the recorded times. These switches are sampled
+as steps, so a mouth does not shrink or appear as a translucent ghost between
+two keyframes. FBX parts exported at zero scale are reconstructed for rendering,
+but stay hidden until an animation key turns them on.
+
+If AssetStudio did not export a particular switch, pause or scrub to the desired
+time, right-click the part, and choose **Set visible at ...** or **Set hidden at
+...**. For a mouth swap, add an OFF key to mouth A and an ON key to mouth B at
+the same time; set their initial states at 0 seconds. The most recent manual key
+for that take applies until the next key or the loop restarts. Right-click again
+to remove a key. Save the profile to keep these timing keys.
+
+**Force visible (ignore FBX swaps)** is a per-part inspection override. Soloing
+one part also forces that part visible so even a normally hidden mesh can be
+examined. Uncheck the force option to return to the FBX timing.
+
 ## Current test case
 
 The current `agnes_h` test FBX has been checked at the FBX object level:
