@@ -35,7 +35,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.1.6";
+        Text = "AS_FBX-reader 0.1.7";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -74,6 +74,22 @@ public sealed class MainForm : Form
         var loadProfile = Button("Load profile", (_, _) => LoadProfile());
         var export = Button("Export MP4/WebP", async (_, _) => await ExportAnimationAsync());
 
+        var pma = new CheckBox
+        {
+            Text = "PMA",
+            Checked = true,
+            AutoSize = true,
+            Padding = new Padding(8, 9, 6, 0),
+            Margin = new Padding(6, 3, 3, 3)
+        };
+        pma.CheckedChanged += (_, _) =>
+        {
+            _viewer.SetPremultiplyAlpha(pma.Checked);
+            _status.Text = pma.Checked
+                ? "Alpha mode: Premultiplied Alpha (PMA)"
+                : "Alpha mode: Straight Alpha";
+        };
+
         _animations.DropDownStyle = ComboBoxStyle.DropDownList;
         _animations.Width = 300;
         _animations.Margin = new Padding(5);
@@ -93,7 +109,8 @@ public sealed class MainForm : Form
             rest,
             saveProfile,
             loadProfile,
-            export
+            export,
+            pma
         ]);
 
         var split = new SplitContainer
