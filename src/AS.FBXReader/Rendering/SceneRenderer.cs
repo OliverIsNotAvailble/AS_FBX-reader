@@ -65,12 +65,28 @@ public sealed class SceneRenderer : IDisposable
         if (_session?.Scene is null || _player is null)
             return;
 
-        var extents = EstimateExtents(_session.Scene);
+        var prepared = new List<PreparedPart>(_session.Parts.Count);
+        foreach (var part in _session.Parts)
+        {
+            if (!part.Visible)
+                continue;
+
+            var node = _session.NodesByName.TryGetValue(part.NodeName, out var found)
+                ? found
+                : null;
+            if (node is null)
+                continue;
+
+            var mesh = _session.Scene.Meshes[part.MeshIndex];
+            prepared.Add(new PreparedPart(part, node, mesh, GetWorldPositions(node, mesh)));
+        }
+
+        var extents = EstimateExtents(prepared);
         var center = (extents.Min + extents.Max) * 0.5f;
-        var spanX = Math.Max(1f, extents.Max.X - extents.Min.X);
-        var spanY = Math.Max(1f, extents.Max.Y - extents.Min.Y);
+        var spanX = Math.Max(0.001f, extents.Max.X - extents.Min.X);
+        var spanY = Math.Max(0.001f, extents.Max.Y - extents.Min.Y);
         var aspect = width / (float)Math.Max(1, height);
-        var halfH = Math.Max(spanY * 0.55f, spanX / aspect * 0.55f) / _zoom;
+        var halfH = Math.Max(spanY * 0.58f, spanX / aspect * 0.58f) / _zoom;
         var halfW = halfH * aspect;
         var projection = Matrix4.CreateOrthographicOffCenter(
             center.X - halfW,
@@ -85,20 +101,10 @@ public sealed class SceneRenderer : IDisposable
         GL.Uniform4(GL.GetUniformLocation(_program, "uColor"), 1f, 1f, 1f, 1f);
         GL.Uniform1(GL.GetUniformLocation(_program, "uTexture"), 0);
 
-        foreach (var part in _session.Parts)
+        foreach (var item in prepared)
         {
-            if (!part.Visible)
-                continue;
-
-            var node = _session.NodesByName.TryGetValue(part.NodeName, out var found)
-                ? found
-                : null;
-            if (node is null)
-                continue;
-
-            var mesh = _session.Scene.Meshes[part.MeshIndex];
-            BindMaterial(mesh.MaterialIndex);
-            DrawMesh(node, mesh);
+            BindMaterial(item.Mesh.MaterialIndex);
+            DrawMesh(item.Mesh, item.Positions);
         }
 
         GL.BindVertexArray(0);
@@ -128,14 +134,15 @@ public sealed class SceneRenderer : IDisposable
         GL.Uniform1(GL.GetUniformLocation(_program, "uUseTexture"), 1);
     }
 
-    private void DrawMesh(Node node, Mesh mesh)
+    private Vector3[] GetWorldPositions(Node node, Mesh mesh)
     {
         if (_player is null)
-            return;
+            return Array.Empty<Vector3>();
 
         var boneMatrices = mesh.HasBones ? _player.GetBoneMatrices(node, mesh) : Array.Empty<Matrix4>();
         var positions = new Vector3[mesh.VertexCount];
         var weightsByVertex = mesh.HasBones ? BuildWeights(mesh) : null;
+        var meshGlobal = _player.GetGlobalTransform(node.Name);
 
         for (var i = 0; i < mesh.VertexCount; i++)
         {
@@ -149,16 +156,27 @@ public sealed class SceneRenderer : IDisposable
                 {
                     if (influence.BoneIndex < 0 || influence.BoneIndex >= boneMatrices.Length)
                         continue;
-                    var transformed = Vector3.TransformPosition(p, boneMatrices[influence.BoneIndex]);
-                    skinned += transformed * influence.Weight;
+
+                    skinned += Vector3.TransformPosition(
+                        p,
+                        boneMatrices[influence.BoneIndex]) * influence.Weight;
                     total += influence.Weight;
                 }
-                p = total > 0.00001f ? skinned / total : p;
+
+                if (total > 0.00001f)
+                    p = skinned / total;
             }
 
-            p = Vector3.TransformPosition(p, _player.GetGlobalTransform(node.Name));
-            positions[i] = p;
+            positions[i] = Vector3.TransformPosition(p, meshGlobal);
         }
+
+        return positions;
+    }
+
+    private void DrawMesh(Mesh mesh, Vector3[] positions)
+    {
+        if (positions.Length != mesh.VertexCount)
+            return;
 
         var vertexData = new float[mesh.VertexCount * 5];
         var hasUv = mesh.HasTextureCoords(0);
@@ -205,24 +223,30 @@ public sealed class SceneRenderer : IDisposable
         return result;
     }
 
-    private static (Vector3 Min, Vector3 Max) EstimateExtents(Scene scene)
+    private static (Vector3 Min, Vector3 Max) EstimateExtents(IEnumerable<PreparedPart> parts)
     {
         var min = new Vector3(float.MaxValue);
         var max = new Vector3(float.MinValue);
-        foreach (var mesh in scene.Meshes)
+
+        foreach (var item in parts)
         {
-            foreach (var v in mesh.Vertices)
+            foreach (var p in item.Positions)
             {
-                var p = MatrixUtil.ToOpenTk(v);
+                if (!float.IsFinite(p.X) || !float.IsFinite(p.Y) || !float.IsFinite(p.Z))
+                    continue;
+
                 min = Vector3.ComponentMin(min, p);
                 max = Vector3.ComponentMax(max, p);
             }
         }
+
         if (min.X == float.MaxValue)
             return (new Vector3(-1), new Vector3(1));
+
         return (min, max);
     }
 
+    private sealed record PreparedPart(ScenePart Part, Node Node, Mesh Mesh, Vector3[] Positions);
     private readonly record struct Influence(int BoneIndex, float Weight);
 
     private static int BuildProgram(string vertex, string fragment)
