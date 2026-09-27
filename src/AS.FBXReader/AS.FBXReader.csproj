@@ -6,14 +6,33 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>AS_FBX-reader</AssemblyName>
     <RootNamespace>AS.FBXReader</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="AssimpNetter" Version="6.0.5" />
+    <PackageReference Include="AssimpNetter" Version="6.0.5" GeneratePathProperty="true" />
     <PackageReference Include="OpenTK" Version="4.9.4" />
     <PackageReference Include="OpenTK.GLControl" Version="4.0.2" />
   </ItemGroup>
+
+  <Target Name="CopyAssimpNative" AfterTargets="Build">
+    <PropertyGroup>
+      <AssimpNativeSource>$(PkgAssimpNetter)\runtimes\win-x64\native\assimp.dll</AssimpNativeSource>
+      <AssimpNativeDestination>$(OutDir)runtimes\win-x64\native</AssimpNativeDestination>
+    </PropertyGroup>
+    <MakeDir Directories="$(AssimpNativeDestination)" />
+    <Copy
+      SourceFiles="$(AssimpNativeSource)"
+      DestinationFolder="$(AssimpNativeDestination)"
+      SkipUnchangedFiles="true"
+      Condition="Exists('$(AssimpNativeSource)')" />
+    <Error
+      Text="Assimp native DLL was not found in the AssimpNetter NuGet package: $(AssimpNativeSource)"
+      Condition="!Exists('$(AssimpNativeSource)')" />
+  </Target>
 </Project>
