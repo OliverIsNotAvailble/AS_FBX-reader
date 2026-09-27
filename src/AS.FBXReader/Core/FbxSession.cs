@@ -1,5 +1,6 @@
 using Assimp;
 using Assimp.Configs;
+using Assimp.Unmanaged;
 using AS.FBXReader.Models;
 
 namespace AS.FBXReader.Core;
@@ -20,17 +21,29 @@ public sealed class FbxSession : IDisposable
         CloseScene();
 
         FilePath = Path.GetFullPath(path);
-        ValidateNativeAssimpDependencies();
+        EnsureAssimpLoadedFromAnsiSafePath();
 
         // Keep pivots evaluated where possible. The AS exporter already gives us
         // clean animation stacks and the viewer benefits from a simpler node tree.
         _context.SetConfig(new FBXPreservePivotsConfig(false));
 
-        Scene = _context.ImportFile(
-            FilePath,
-            PostProcessSteps.Triangulate |
-            PostProcessSteps.SortByPrimitiveType |
-            PostProcessSteps.ValidateDataStructure);
+        // AssimpNetter 6.0.5 uses ANSI LoadLibrary on Windows and Assimp's
+        // file import path is not reliable with characters outside the active
+        // Windows code page either. Stage only the FBX itself to an ASCII-only
+        // path; textures are resolved later from the original FilePath by .NET.
+        var stagedFbx = StageFbxForNativeImport(FilePath);
+        try
+        {
+            Scene = _context.ImportFile(
+                stagedFbx,
+                PostProcessSteps.Triangulate |
+                PostProcessSteps.SortByPrimitiveType |
+                PostProcessSteps.ValidateDataStructure);
+        }
+        finally
+        {
+            try { File.Delete(stagedFbx); } catch { }
+        }
 
         if (Scene is null || Scene.RootNode is null)
             throw new InvalidDataException("Assimp did not return a valid FBX scene.");
@@ -55,38 +68,84 @@ public sealed class FbxSession : IDisposable
         return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(FilePath)!, raw));
     }
 
-    private static void ValidateNativeAssimpDependencies()
+    private static void EnsureAssimpLoadedFromAnsiSafePath()
     {
-        var baseDir = AppContext.BaseDirectory;
-        var nativeDll = Path.Combine(baseDir, "runtimes", "win-x64", "native", "assimp.dll");
+        if (AssimpLibrary.Instance.IsLibraryLoaded)
+            return;
 
-        if (!File.Exists(nativeDll))
+        var baseDir = AppContext.BaseDirectory;
+        var sourceNativeDir = Path.Combine(baseDir, "runtimes", "win-x64", "native");
+        var sourceAssimp = Path.Combine(sourceNativeDir, "assimp.dll");
+
+        if (!File.Exists(sourceAssimp))
         {
             throw new FileNotFoundException(
                 "assimp.dll was not found. Rebuild/download the latest AS_FBX-reader so the native library is copied to:\r\n" +
-                nativeDll,
-                nativeDll);
+                sourceAssimp,
+                sourceAssimp);
         }
 
-        var systemDir = Environment.SystemDirectory;
-        var vcRuntimeFiles = new[]
+        // AssimpNetter 6.0.5 calls kernel32!LoadLibraryA (ANSI), not LoadLibraryW.
+        // A perfectly valid app path such as "...\\■clean pra trampo\\..." is
+        // therefore mangled before Windows sees it and produces ERROR_MOD_NOT_FOUND.
+        // Keep the native runtime in a deliberately ASCII-only, user-writable path.
+        var publicDocs = Environment.GetFolderPath(Environment.SpecialFolder.CommonDocuments);
+        var safeDir = Path.Combine(publicDocs, "AS_FBX-reader", "native-win-x64");
+        Directory.CreateDirectory(safeDir);
+
+        CopyNativeDlls(sourceNativeDir, safeDir);
+
+        // Also copy app-local VC runtime DLLs when present. This covers machines
+        // where the VC redistributable registration exists but one runtime DLL was
+        // not published to System32.
+        foreach (var file in Directory.EnumerateFiles(baseDir, "*.dll", SearchOption.TopDirectoryOnly))
         {
-            "MSVCP140.dll",
-            "VCRUNTIME140.dll",
-            "VCRUNTIME140_1.dll"
-        };
+            var name = Path.GetFileName(file);
+            if (name.StartsWith("VCRUNTIME", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("MSVCP", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("CONCRT", StringComparison.OrdinalIgnoreCase))
+            {
+                File.Copy(file, Path.Combine(safeDir, name), true);
+            }
+        }
 
-        var missing = vcRuntimeFiles
-            .Where(file => !File.Exists(Path.Combine(systemDir, file)))
-            .ToArray();
-
-        if (missing.Length > 0)
+        var safeAssimp = Path.Combine(safeDir, "assimp.dll");
+        try
+        {
+            AssimpLibrary.Instance.LoadLibrary(safeAssimp);
+        }
+        catch (Exception ex)
         {
             throw new InvalidOperationException(
-                "assimp.dll exists, but required Microsoft Visual C++ runtime DLLs are missing:\r\n\r\n" +
-                string.Join("\r\n", missing.Select(x => "  - " + x)) +
-                "\r\n\r\nInstall the latest Microsoft Visual C++ v14 Redistributable (x64), then restart AS_FBX-reader.");
+                "Assimp native library could not be loaded even from the ASCII-safe runtime directory.\r\n\r\n" +
+                $"Source app path: {baseDir}\r\n" +
+                $"Safe runtime path: {safeAssimp}\r\n\r\n" +
+                "If this still reports 0x8007007E, place the matching VC runtime DLLs " +
+                "(MSVCP140.dll, VCRUNTIME140.dll, VCRUNTIME140_1.dll) next to AS_FBX-reader.exe and try again.",
+                ex);
         }
+    }
+
+    private static void CopyNativeDlls(string sourceDir, string destinationDir)
+    {
+        foreach (var file in Directory.EnumerateFiles(sourceDir, "*.dll", SearchOption.TopDirectoryOnly))
+        {
+            File.Copy(
+                file,
+                Path.Combine(destinationDir, Path.GetFileName(file)),
+                overwrite: true);
+        }
+    }
+
+    private static string StageFbxForNativeImport(string originalPath)
+    {
+        var publicDocs = Environment.GetFolderPath(Environment.SpecialFolder.CommonDocuments);
+        var stageDir = Path.Combine(publicDocs, "AS_FBX-reader", "import-cache");
+        Directory.CreateDirectory(stageDir);
+
+        var staged = Path.Combine(stageDir, $"scene_{Guid.NewGuid():N}.fbx");
+        File.Copy(originalPath, staged, overwrite: true);
+        return staged;
     }
 
     private void IndexNodes(Node node)
