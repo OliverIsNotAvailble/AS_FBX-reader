@@ -94,20 +94,7 @@ public sealed class FbxSession : IDisposable
         Directory.CreateDirectory(safeDir);
 
         CopyNativeDlls(sourceNativeDir, safeDir);
-
-        // Also copy app-local VC runtime DLLs when present. This covers machines
-        // where the VC redistributable registration exists but one runtime DLL was
-        // not published to System32.
-        foreach (var file in Directory.EnumerateFiles(baseDir, "*.dll", SearchOption.TopDirectoryOnly))
-        {
-            var name = Path.GetFileName(file);
-            if (name.StartsWith("VCRUNTIME", StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("MSVCP", StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("CONCRT", StringComparison.OrdinalIgnoreCase))
-            {
-                File.Copy(file, Path.Combine(safeDir, name), true);
-            }
-        }
+        CopyVcRuntimeFamily(baseDir, sourceNativeDir, safeDir);
 
         var safeAssimp = Path.Combine(safeDir, "assimp.dll");
         try
@@ -123,6 +110,71 @@ public sealed class FbxSession : IDisposable
                 "If this still reports 0x8007007E, place the matching VC runtime DLLs " +
                 "(MSVCP140.dll, VCRUNTIME140.dll, VCRUNTIME140_1.dll) next to AS_FBX-reader.exe and try again.",
                 ex);
+        }
+    }
+
+    private static void CopyVcRuntimeFamily(
+        string baseDir,
+        string sourceNativeDir,
+        string destinationDir)
+    {
+        var required = new[]
+        {
+            "MSVCP140.dll",
+            "VCRUNTIME140.dll",
+            "VCRUNTIME140_1.dll"
+        };
+
+        foreach (var name in required)
+        {
+            var candidates = new[]
+            {
+                Path.Combine(baseDir, name),
+                Path.Combine(sourceNativeDir, name),
+                Path.Combine(Environment.SystemDirectory, name)
+            };
+
+            var source = candidates.FirstOrDefault(File.Exists);
+
+            // Some Windows 11 machines have the VC++ redistributable registered
+            // but VCRUNTIME140_1.dll is only present inside WinSxS. Use that
+            // Microsoft-owned copy app-locally instead of touching System32.
+            if (source is null &&
+                string.Equals(name, "VCRUNTIME140_1.dll", StringComparison.OrdinalIgnoreCase))
+            {
+                source = FindWinSxSVcRuntime(name);
+            }
+
+            if (source != null)
+            {
+                File.Copy(source, Path.Combine(destinationDir, name), true);
+            }
+        }
+    }
+
+    private static string? FindWinSxSVcRuntime(string fileName)
+    {
+        try
+        {
+            var winSxs = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                "WinSxS");
+
+            if (!Directory.Exists(winSxs))
+                return null;
+
+            return Directory
+                .EnumerateFiles(winSxs, fileName, SearchOption.AllDirectories)
+                .Where(path =>
+                    path.Contains(
+                        $"{Path.DirectorySeparatorChar}amd64_",
+                        StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault();
+        }
+        catch
+        {
+            return null;
         }
     }
 
