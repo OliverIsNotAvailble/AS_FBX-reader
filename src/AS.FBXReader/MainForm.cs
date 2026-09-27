@@ -21,13 +21,13 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.1";
+        Text = "AS_FBX-reader 0.1.1";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Font;
-        Font = new Font("Segoe UI", 10F);
+        Font = new Font("Segoe UI", 11F);
 
         BuildUi();
         HookEvents();
@@ -39,8 +39,8 @@ public sealed class MainForm : Form
         var toolbar = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 46,
-            Padding = new Padding(6),
+            Height = 62,
+            Padding = new Padding(8, 9, 8, 7),
             WrapContents = false,
             AutoSize = false
         };
@@ -55,10 +55,11 @@ public sealed class MainForm : Form
 
         _animations.DropDownStyle = ComboBoxStyle.DropDownList;
         _animations.Width = 300;
+        _animations.Margin = new Padding(5, 5, 5, 5);
 
         toolbar.Controls.AddRange([
             open,
-            new Label { Text = "Animation:", AutoSize = true, Padding = new Padding(8, 8, 0, 0) },
+            new Label { Text = "Animation:", AutoSize = true, Padding = new Padding(8, 10, 2, 0), Margin = new Padding(3, 3, 3, 3) },
             _animations,
             play,
             pause,
@@ -78,8 +79,8 @@ public sealed class MainForm : Form
         var leftButtons = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 40,
-            Padding = new Padding(4),
+            Height = 54,
+            Padding = new Padding(6, 7, 6, 5),
             WrapContents = false
         };
         leftButtons.Controls.Add(Button("Show all", (_, _) => SetAll(true)));
@@ -314,7 +315,15 @@ public sealed class MainForm : Form
 
     private static Button Button(string text, EventHandler click)
     {
-        var button = new Button { Text = text, AutoSize = true, Height = 30 };
+        var button = new Button
+        {
+            Text = text,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            MinimumSize = new Size(88, 38),
+            Padding = new Padding(10, 5, 10, 5),
+            Margin = new Padding(4, 2, 4, 2)
+        };
         button.Click += click;
         return button;
     }
