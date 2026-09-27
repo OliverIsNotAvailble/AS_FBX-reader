@@ -60,6 +60,12 @@ public sealed class ExportDialog : Form
         Font = new Font("Segoe UI", 10.5F);
 
         BuildUi(premultiplyAlpha);
+
+        // This is a second OpenGL viewer hosted by the export window. It must be
+        // explicitly attached to the already-loaded FBX/session; otherwise it
+        // remains in its default "Open an FBX" state.
+        _preview.Attach(_session, _player);
+
         HookEvents();
         PopulateAnimations();
 
@@ -157,22 +163,31 @@ public sealed class ExportDialog : Form
         ConfigureNumber(_width, 64, 8192, 2048);
         ConfigureNumber(_height, 64, 8192, 2048);
 
-        var sizePanel = new FlowLayoutPanel
+        var sizePanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             AutoSize = true,
-            WrapContents = false
+            ColumnCount = 3
         };
-        _width.Width = 92;
-        _height.Width = 92;
-        sizePanel.Controls.Add(_width);
-        sizePanel.Controls.Add(new Label
+        sizePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        sizePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
+        sizePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+
+        _width.Dock = DockStyle.Fill;
+        _height.Dock = DockStyle.Fill;
+        _width.MinimumSize = new Size(96, 32);
+        _height.MinimumSize = new Size(96, 32);
+
+        var sizeX = new Label
         {
             Text = "×",
-            AutoSize = true,
-            Padding = new Padding(4, 6, 4, 0)
-        });
-        sizePanel.Controls.Add(_height);
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+
+        sizePanel.Controls.Add(_width, 0, 0);
+        sizePanel.Controls.Add(sizeX, 1, 0);
+        sizePanel.Controls.Add(_height, 2, 0);
         AddRow(settings, "Size", sizePanel);
 
         ConfigureNumber(_fps, 1, 240, 30);
@@ -409,6 +424,8 @@ public sealed class ExportDialog : Form
 
         if (_originalAnimationIndex >= 0)
             _player.SetTime(_originalTime);
+
+        _preview.InvalidateScene();
     }
 
     private void ResetFraming()
