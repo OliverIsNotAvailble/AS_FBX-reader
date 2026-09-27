@@ -15,6 +15,7 @@ public sealed class AnimationPlayer
         public Matrix4 Global { get; set; }
         public Matrix4 BindGlobal { get; set; }
         public bool CollapsedMesh { get; init; }
+        public bool SourceVisible { get; set; } = true;
         public Vector3 BaseScale { get; init; } = Vector3.One;
         public Quaternion BaseRotation { get; init; } = Quaternion.Identity;
         public Vector3 BaseTranslation { get; init; } = Vector3.Zero;
@@ -31,6 +32,10 @@ public sealed class AnimationPlayer
     public bool Playing { get; set; }
     public int RecoveredBoneOffsets { get; private set; }
     public int RestoredCollapsedMeshes { get; private set; }
+    public string? CurrentAnimationName
+        => AnimationIndex >= 0 && AnimationIndex < _session.Animations.Count
+            ? _session.Animations[AnimationIndex].Name
+            : null;
 
     public double DurationSeconds
         => AnimationIndex >= 0 && AnimationIndex < _session.Animations.Count
@@ -102,6 +107,9 @@ public sealed class AnimationPlayer
         => _states.TryGetValue(nodeName, out var state)
             ? state.Global
             : Matrix4.Identity;
+
+    public bool IsSourceVisible(string nodeName)
+        => !_states.TryGetValue(nodeName, out var state) || state.SourceVisible;
 
     public Matrix4[] GetBoneMatrices(Node meshNode, Mesh mesh)
     {
@@ -238,6 +246,7 @@ public sealed class AnimationPlayer
     private void EvaluateNode(NodeState state)
     {
         var local = state.BaseLocal;
+        state.SourceVisible = !state.CollapsedMesh;
 
         if (AnimationIndex >= 0 &&
             _session.Scene is not null &&
@@ -248,6 +257,23 @@ public sealed class AnimationPlayer
             var ticks = TimeSeconds * tps;
 
             var scale = SampleVector(channel.ScalingKeys, ticks, state.BaseScale);
+            if (state.Node.MeshIndices.Count > 0)
+            {
+                // AssetStudio writes SpriteRenderer enable/disable as mesh
+                // scale keys of exactly 0 or 1. Sample those as switches,
+                // never interpolate a ghost image between the two states.
+                if (IsVisibilityCurve(channel.ScalingKeys))
+                    scale = SampleSteppedVector(channel.ScalingKeys, ticks, state.BaseScale);
+
+                state.SourceVisible = channel.ScalingKeys.Count > 0
+                    ? MathF.Abs(scale.X) > 0.000001f && MathF.Abs(scale.Y) > 0.000001f
+                    : !state.CollapsedMesh;
+
+                // Keep a usable mesh transform even while source visibility
+                // is off, so the per-part Force visible option can show it.
+                if (!state.SourceVisible)
+                    scale = state.BaseScale;
+            }
             var rotation = SampleQuaternion(channel.RotationKeys, ticks, state.BaseRotation);
             var translation = SampleVector(channel.PositionKeys, ticks, state.BaseTranslation);
 
@@ -262,6 +288,29 @@ public sealed class AnimationPlayer
 
         foreach (var child in state.Children)
             EvaluateNode(child);
+    }
+
+    private static bool IsVisibilityCurve(IList<VectorKey> keys)
+        => keys.Count > 0 && keys.All(key =>
+        {
+            var v = MatrixUtil.ToOpenTk(key.Value);
+            const float epsilon = 0.0001f;
+            return (MathF.Abs(v.X) < epsilon && MathF.Abs(v.Y) < epsilon && MathF.Abs(v.Z) < epsilon) ||
+                   (MathF.Abs(v.X - 1f) < epsilon && MathF.Abs(v.Y - 1f) < epsilon && MathF.Abs(v.Z - 1f) < epsilon);
+        });
+
+    private static Vector3 SampleSteppedVector(IList<VectorKey> keys, double time, Vector3 fallback)
+    {
+        if (keys.Count == 0)
+            return fallback;
+
+        for (var i = keys.Count - 1; i >= 0; i--)
+        {
+            if (time >= keys[i].Time)
+                return MatrixUtil.ToOpenTk(keys[i].Value);
+        }
+
+        return MatrixUtil.ToOpenTk(keys[0].Value);
     }
 
     private static bool IsCollapsedMesh(Matrix4 m)
