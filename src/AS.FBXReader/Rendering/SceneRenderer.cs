@@ -78,7 +78,9 @@ public sealed class SceneRenderer : IDisposable
                 continue;
 
             var mesh = _session.Scene.Meshes[part.MeshIndex];
-            prepared.Add(new PreparedPart(part, node, mesh, GetWorldPositions(node, mesh)));
+            var positions = GetWorldPositions(node, mesh);
+            var sortDepth = GetSortDepth(positions);
+            prepared.Add(new PreparedPart(part, node, mesh, positions, sortDepth));
         }
 
         var extents = EstimateExtents(prepared);
@@ -101,7 +103,16 @@ public sealed class SceneRenderer : IDisposable
         GL.Uniform4(GL.GetUniformLocation(_program, "uColor"), 1f, 1f, 1f, 1f);
         GL.Uniform1(GL.GetUniformLocation(_program, "uTexture"), 0);
 
-        foreach (var item in prepared)
+        // AssetStudio V4.3 encodes Unity SpriteRenderer sorting order into the
+        // generated visual frame's Z position (sortingOrder * 0.001). Depth test
+        // is intentionally disabled for transparent 2D sprites, so we must honor
+        // that depth explicitly with painter's-order rendering: back first,
+        // front last. Keep original part order as a stable tie-breaker.
+        foreach (var item in prepared
+                     .Select((value, index) => new { value, index })
+                     .OrderBy(x => x.value.SortDepth)
+                     .ThenBy(x => x.index)
+                     .Select(x => x.value))
         {
             BindMaterial(item.Mesh.MaterialIndex);
             DrawMesh(item.Mesh, item.Positions);
@@ -223,6 +234,25 @@ public sealed class SceneRenderer : IDisposable
         return result;
     }
 
+    private static float GetSortDepth(IReadOnlyList<Vector3> positions)
+    {
+        if (positions.Count == 0)
+            return 0f;
+
+        double total = 0;
+        var count = 0;
+        foreach (var p in positions)
+        {
+            if (!float.IsFinite(p.Z))
+                continue;
+
+            total += p.Z;
+            count++;
+        }
+
+        return count > 0 ? (float)(total / count) : 0f;
+    }
+
     private static (Vector3 Min, Vector3 Max) EstimateExtents(IEnumerable<PreparedPart> parts)
     {
         var min = new Vector3(float.MaxValue);
@@ -246,7 +276,12 @@ public sealed class SceneRenderer : IDisposable
         return (min, max);
     }
 
-    private sealed record PreparedPart(ScenePart Part, Node Node, Mesh Mesh, Vector3[] Positions);
+    private sealed record PreparedPart(
+        ScenePart Part,
+        Node Node,
+        Mesh Mesh,
+        Vector3[] Positions,
+        float SortDepth);
     private readonly record struct Influence(int BoneIndex, float Weight);
 
     private static int BuildProgram(string vertex, string fragment)
