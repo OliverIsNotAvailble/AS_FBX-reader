@@ -35,7 +35,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.1.9";
+        Text = "AS_FBX-reader 0.1.10";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -512,9 +512,13 @@ public sealed class MainForm : Form
             if (_animations.Items.Count > 0)
                 _animations.SelectedIndex = 0;
 
+            var duplicateNote = _session.DuplicateModelNamesFixed > 0
+                ? $" | {_session.DuplicateModelNamesFixed} duplicate FBX Model names isolated"
+                : string.Empty;
+
             _status.Text =
                 $"{Path.GetFileName(dialog.FileName)} | {_session.Parts.Count} parts | " +
-                $"{_session.Animations.Count} animations | drag parts into groups";
+                $"{_session.Animations.Count} animations{duplicateNote} | drag parts into groups";
         }
         catch (Exception ex)
         {
