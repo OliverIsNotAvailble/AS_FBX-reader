@@ -12,6 +12,9 @@ public sealed class VisibilityProfile
     // Front -> back, matching the UI list (top -> bottom).
     public List<string> PartOrderIds { get; set; } = new();
 
+    // User-friendly names for parts with Korean/Chinese/Japanese source names.
+    public Dictionary<string, string> PartAliases { get; set; } = new();
+
     public static VisibilityProfile Load(string path)
         => JsonSerializer.Deserialize<VisibilityProfile>(
                File.ReadAllText(path),
