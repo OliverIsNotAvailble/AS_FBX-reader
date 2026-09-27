@@ -21,6 +21,18 @@ public sealed class SceneRenderer : IDisposable
     private bool _initialized;
     private float _zoom = 1.0f;
     private readonly TextureCache _textures = new();
+    private bool _premultiplyAlpha = true;
+
+    public bool PremultiplyAlpha => _premultiplyAlpha;
+
+    public void SetPremultiplyAlpha(bool enabled)
+    {
+        if (_premultiplyAlpha == enabled)
+            return;
+
+        _premultiplyAlpha = enabled;
+        _textures.SetPremultiplyAlpha(enabled);
+    }
 
     public void Initialize()
     {
@@ -40,7 +52,7 @@ public sealed class SceneRenderer : IDisposable
         GL.EnableVertexAttribArray(1);
 
         GL.Enable(EnableCap.Blend);
-        GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+        ApplyBlendMode();
         GL.Disable(EnableCap.CullFace);
         GL.Disable(EnableCap.DepthTest);
 
@@ -119,6 +131,8 @@ public sealed class SceneRenderer : IDisposable
             view.Top,
             -10000f,
             10000f);
+
+        ApplyBlendMode();
 
         GL.UseProgram(_program);
         GL.UniformMatrix4(GL.GetUniformLocation(_program, "uProjection"), false, ref projection);
@@ -199,6 +213,22 @@ public sealed class SceneRenderer : IDisposable
         var hasNeg = d1 < -epsilon || d2 < -epsilon || d3 < -epsilon;
         var hasPos = d1 > epsilon || d2 > epsilon || d3 > epsilon;
         return !(hasNeg && hasPos);
+    }
+
+    private void ApplyBlendMode()
+    {
+        if (_premultiplyAlpha)
+        {
+            GL.BlendFunc(
+                BlendingFactor.One,
+                BlendingFactor.OneMinusSrcAlpha);
+        }
+        else
+        {
+            GL.BlendFunc(
+                BlendingFactor.SrcAlpha,
+                BlendingFactor.OneMinusSrcAlpha);
+        }
     }
 
     private void BindMaterial(int materialIndex)
