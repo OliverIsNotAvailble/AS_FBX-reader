@@ -14,6 +14,7 @@ public sealed class AnimationPlayer
         public Matrix4 BaseLocal { get; init; }
         public Matrix4 Global { get; set; }
         public Matrix4 BindGlobal { get; set; }
+        public bool CollapsedMesh { get; init; }
         public Vector3 BaseScale { get; init; } = Vector3.One;
         public Quaternion BaseRotation { get; init; } = Quaternion.Identity;
         public Vector3 BaseTranslation { get; init; } = Vector3.Zero;
@@ -115,18 +116,20 @@ public sealed class AnimationPlayer
             var boneGlobal = GetGlobalTransform(bone.Name);
             var offset = MatrixUtil.ToOpenTk(bone.OffsetMatrix);
 
-            if (!IsFinite(offset) &&
-                _states.TryGetValue(meshNode.Name, out var meshState) &&
+            if (_states.TryGetValue(meshNode.Name, out var meshState) &&
                 _states.TryGetValue(bone.Name, out var boneState))
             {
-                // Row-vector bind pose: meshBind * inverse(boneBind).
-                // This is the offset Assimp would have obtained from a valid
-                // FBX Transform / TransformLink pair. Keep the original offset
-                // for healthy meshes, so Agnes and other good FBXs are unchanged.
-                var inverseBoneBind = boneState.BindGlobal.Inverted();
-                var recovered = meshState.BindGlobal * inverseBoneBind;
-                if (IsFinite(recovered))
-                    offset = recovered;
+                if (meshState.CollapsedMesh || !IsFinite(offset))
+                {
+                    // Row-vector bind pose: meshBind * inverse(boneBind).
+                    // Assimp can normalize a broken FBX bind into a finite but
+                    // unusable matrix. A collapsed mesh always needs recovery;
+                    // healthy meshes keep their original offsets.
+                    var inverseBoneBind = boneState.BindGlobal.Inverted();
+                    var recovered = meshState.BindGlobal * inverseBoneBind;
+                    if (IsFinite(recovered))
+                        offset = recovered;
+                }
             }
 
             // OpenTK TransformPosition uses row-vector semantics:
@@ -174,7 +177,8 @@ public sealed class AnimationPlayer
         // point and also makes FBX skin bind matrices NaN. The reader exposes
         // visibility separately, so restore the mesh geometry here; leave
         // skeleton and parent transforms alone.
-        if (node.MeshIndices.Count > 0 && IsCollapsedMesh(local))
+        var collapsedMesh = node.MeshIndices.Count > 0 && IsCollapsedMesh(local);
+        if (collapsedMesh)
         {
             local = Matrix4.CreateTranslation(local.M41, local.M42, local.M43);
             RestoredCollapsedMeshes++;
@@ -205,6 +209,7 @@ public sealed class AnimationPlayer
             Parent = parent,
             Local = local,
             BaseLocal = local,
+            CollapsedMesh = collapsedMesh,
             BaseScale = baseScale,
             BaseRotation = baseRotation,
             BaseTranslation = baseTranslation
