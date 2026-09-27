@@ -6,7 +6,7 @@ internal static class Program
     private static void Main()
     {
         ApplicationConfiguration.Initialize();
-        Application.SetDefaultFont(new Font("Segoe UI", 10F));
+        Application.SetDefaultFont(new Font("Segoe UI", 11F));
         Application.Run(new MainForm());
     }
 }
