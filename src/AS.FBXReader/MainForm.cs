@@ -515,10 +515,16 @@ public sealed class MainForm : Form
             var duplicateNote = _session.DuplicateModelNamesFixed > 0
                 ? $" | {_session.DuplicateModelNamesFixed} duplicate FBX Model names isolated"
                 : string.Empty;
+            var bindNote = _player.RecoveredBoneOffsets > 0
+                ? $" | {_player.RecoveredBoneOffsets} broken skin binds recovered"
+                : string.Empty;
+            var scaleNote = _player.RestoredCollapsedMeshes > 0
+                ? $" | {_player.RestoredCollapsedMeshes} zero-scale meshes restored"
+                : string.Empty;
 
             _status.Text =
                 $"{Path.GetFileName(dialog.FileName)} | {_session.Parts.Count} parts | " +
-                $"{_session.Animations.Count} animations{duplicateNote} | drag parts into groups";
+                $"{_session.Animations.Count} animations{duplicateNote}{scaleNote}{bindNote} | drag parts into groups";
         }
         catch (Exception ex)
         {
