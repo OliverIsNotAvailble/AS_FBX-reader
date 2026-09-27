@@ -11,9 +11,6 @@ public static class MatrixUtil
     //
     // Transpose ONCE at the boundary. After this, all viewer math can use normal
     // System.Numerics/OpenTK row-vector conventions consistently.
-    public static System.Numerics.Matrix4x4 ToNumerics(Assimp.Matrix4x4 m)
-        => System.Numerics.Matrix4x4.Transpose(m);
-
     public static Matrix4 ToOpenTk(System.Numerics.Matrix4x4 assimpMatrix)
     {
         var m = System.Numerics.Matrix4x4.Transpose(assimpMatrix);
