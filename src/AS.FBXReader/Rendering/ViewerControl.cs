@@ -84,6 +84,18 @@ public sealed class ViewerControl : UserControl
         _gl.Invalidate();
     }
 
+    public bool PremultiplyAlpha => _renderer.PremultiplyAlpha;
+
+    public void SetPremultiplyAlpha(bool enabled)
+    {
+        if (!_gl.HasValidContext)
+            return;
+
+        _gl.MakeCurrent();
+        _renderer.SetPremultiplyAlpha(enabled);
+        _gl.Invalidate();
+    }
+
     public void InvalidateScene() => _gl.Invalidate();
 
     public Bitmap CaptureFrame(int width, int height)
