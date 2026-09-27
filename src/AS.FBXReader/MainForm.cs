@@ -35,7 +35,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.1.7";
+        Text = "AS_FBX-reader 0.1.8";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -72,7 +72,7 @@ public sealed class MainForm : Form
         });
         var saveProfile = Button("Save profile", (_, _) => SaveProfile());
         var loadProfile = Button("Load profile", (_, _) => LoadProfile());
-        var export = Button("Export MP4/WebP", async (_, _) => await ExportAnimationAsync());
+        var export = Button("Export / Framing", (_, _) => OpenExportDialog());
 
         var pma = new CheckBox
         {
@@ -1156,73 +1156,34 @@ public sealed class MainForm : Form
             : null;
     }
 
-    private async Task ExportAnimationAsync()
+    private void OpenExportDialog()
     {
-        if (_session.Scene is null || _player.AnimationIndex < 0)
-        {
-            MessageBox.Show(this, "Open an FBX and select an animation first.");
-            return;
-        }
-
-        using var dialog = new SaveFileDialog
-        {
-            Filter = "MP4 video (*.mp4)|*.mp4|Animated WebP (*.webp)|*.webp",
-            FileName = (_animations.SelectedItem as AnimationTake)?.Name + ".mp4"
-        };
-
-        if (dialog.ShowDialog(this) != DialogResult.OK)
-            return;
-
-        var temp = Path.Combine(
-            Path.GetTempPath(),
-            "AS_FBX_reader",
-            Guid.NewGuid().ToString("N"));
-
-        try
-        {
-            Cursor = Cursors.WaitCursor;
-
-            var exporter = new AnimationExporter();
-            await exporter.ExportPngSequenceAsync(
-                _viewer,
-                _player,
-                temp,
-                1920,
-                1080,
-                30);
-
-            await exporter.EncodeWithFfmpegAsync(
-                temp,
-                dialog.FileName,
-                30);
-
-            MessageBox.Show(
-                this,
-                $"Exported:\r\n{dialog.FileName}",
-                "Done");
-        }
-        catch (Exception ex)
+        if (_session.Scene is null || _session.Animations.Count == 0)
         {
             MessageBox.Show(
                 this,
-                ex.ToString(),
-                "Export failed",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+                "Open an FBX with at least one animation first.");
+            return;
         }
-        finally
-        {
-            Cursor = Cursors.Default;
 
-            try
-            {
-                if (Directory.Exists(temp))
-                    Directory.Delete(temp, true);
-            }
-            catch
-            {
-            }
+        _player.Playing = false;
+
+        using var dialog = new ExportDialog(
+            _session,
+            _player,
+            _viewer.PremultiplyAlpha);
+
+        dialog.ShowDialog(this);
+
+        // ExportDialog restores the previous animation/time when it closes.
+        // Keep the main animation selector visually in sync with the player.
+        if (_player.AnimationIndex >= 0 &&
+            _player.AnimationIndex < _animations.Items.Count)
+        {
+            _animations.SelectedIndex = _player.AnimationIndex;
         }
+
+        _viewer.InvalidateScene();
     }
 
     private static Button Button(string text, EventHandler click)
