@@ -20,6 +20,7 @@ public sealed class FbxSession : IDisposable
         CloseScene();
 
         FilePath = Path.GetFullPath(path);
+        ValidateNativeAssimpDependencies();
 
         // Keep pivots evaluated where possible. The AS exporter already gives us
         // clean animation stacks and the viewer benefits from a simpler node tree.
@@ -52,6 +53,40 @@ public sealed class FbxSession : IDisposable
             return raw;
 
         return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(FilePath)!, raw));
+    }
+
+    private static void ValidateNativeAssimpDependencies()
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var nativeDll = Path.Combine(baseDir, "runtimes", "win-x64", "native", "assimp.dll");
+
+        if (!File.Exists(nativeDll))
+        {
+            throw new FileNotFoundException(
+                "assimp.dll was not found. Rebuild/download the latest AS_FBX-reader so the native library is copied to:\r\n" +
+                nativeDll,
+                nativeDll);
+        }
+
+        var systemDir = Environment.SystemDirectory;
+        var vcRuntimeFiles = new[]
+        {
+            "MSVCP140.dll",
+            "VCRUNTIME140.dll",
+            "VCRUNTIME140_1.dll"
+        };
+
+        var missing = vcRuntimeFiles
+            .Where(file => !File.Exists(Path.Combine(systemDir, file)))
+            .ToArray();
+
+        if (missing.Length > 0)
+        {
+            throw new InvalidOperationException(
+                "assimp.dll exists, but required Microsoft Visual C++ runtime DLLs are missing:\r\n\r\n" +
+                string.Join("\r\n", missing.Select(x => "  - " + x)) +
+                "\r\n\r\nInstall the latest Microsoft Visual C++ v14 Redistributable (x64), then restart AS_FBX-reader.");
+        }
     }
 
     private void IndexNodes(Node node)
