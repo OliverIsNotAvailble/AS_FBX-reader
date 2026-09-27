@@ -16,12 +16,14 @@ public sealed class MainForm : Form
     private readonly Label _status = new();
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 16 };
     private DateTime _lastTick = DateTime.UtcNow;
+    private int _dragPartIndex = -1;
+    private bool _reorderingParts;
 
     public MainForm()
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.1.3";
+        Text = "AS_FBX-reader 0.1.4";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -86,10 +88,17 @@ public sealed class MainForm : Form
         leftButtons.Controls.Add(Button("Show all", (_, _) => SetAll(true)));
         leftButtons.Controls.Add(Button("Hide all", (_, _) => SetAll(false)));
         leftButtons.Controls.Add(Button("Solo", (_, _) => SoloSelected()));
+        leftButtons.Controls.Add(new Label
+        {
+            Text = "Drag layers: TOP = FRONT",
+            AutoSize = true,
+            Padding = new Padding(10, 9, 0, 0)
+        });
 
         _parts.Dock = DockStyle.Fill;
         _parts.CheckOnClick = true;
         _parts.IntegralHeight = false;
+        _parts.AllowDrop = true;
         split.Panel1.Controls.Add(_parts);
         split.Panel1.Controls.Add(leftButtons);
         split.Panel2.Controls.Add(_viewer);
@@ -115,6 +124,9 @@ public sealed class MainForm : Form
     {
         _parts.ItemCheck += (_, e) =>
         {
+            if (_reorderingParts)
+                return;
+
             BeginInvoke(() =>
             {
                 if (e.Index >= 0 && e.Index < _session.Parts.Count)
@@ -123,6 +135,47 @@ public sealed class MainForm : Form
                     _viewer.InvalidateScene();
                 }
             });
+        };
+
+        _parts.MouseDown += (_, e) =>
+        {
+            _dragPartIndex = _parts.IndexFromPoint(e.Location);
+            if (_dragPartIndex < 0 || _dragPartIndex >= _parts.Items.Count)
+                return;
+
+            _parts.SelectedIndex = _dragPartIndex;
+            _parts.DoDragDrop(_parts.Items[_dragPartIndex]!, DragDropEffects.Move);
+        };
+
+        _parts.DragOver += (_, e) =>
+        {
+            if (_dragPartIndex < 0 || !e.Data!.GetDataPresent(typeof(ScenePart)))
+            {
+                e.Effect = DragDropEffects.None;
+                return;
+            }
+
+            e.Effect = DragDropEffects.Move;
+        };
+
+        _parts.DragDrop += (_, e) =>
+        {
+            if (_dragPartIndex < 0 || _dragPartIndex >= _parts.Items.Count)
+                return;
+
+            var clientPoint = _parts.PointToClient(new Point(e.X, e.Y));
+            var targetIndex = _parts.IndexFromPoint(clientPoint);
+            if (targetIndex < 0)
+                targetIndex = _parts.Items.Count - 1;
+
+            if (targetIndex == _dragPartIndex)
+            {
+                _dragPartIndex = -1;
+                return;
+            }
+
+            MovePart(_dragPartIndex, targetIndex);
+            _dragPartIndex = -1;
         };
 
         _animations.SelectedIndexChanged += (_, _) =>
@@ -228,6 +281,76 @@ public sealed class MainForm : Form
         _viewer.InvalidateScene();
     }
 
+    private void MovePart(int fromIndex, int toIndex)
+    {
+        if (fromIndex < 0 || fromIndex >= _session.Parts.Count ||
+            toIndex < 0 || toIndex >= _session.Parts.Count ||
+            fromIndex == toIndex)
+        {
+            return;
+        }
+
+        var moved = _session.Parts[fromIndex];
+        var wasChecked = moved.Visible;
+
+        _reorderingParts = true;
+        try
+        {
+            _session.Parts.RemoveAt(fromIndex);
+            _session.Parts.Insert(toIndex, moved);
+
+            _parts.Items.RemoveAt(fromIndex);
+            _parts.Items.Insert(toIndex, moved);
+            _parts.SetItemChecked(toIndex, wasChecked);
+            _parts.SelectedIndex = toIndex;
+        }
+        finally
+        {
+            _reorderingParts = false;
+        }
+
+        _status.Text = $"Layer moved: {moved.Name} | top = front, bottom = back";
+        _viewer.InvalidateScene();
+    }
+
+    private void ApplyPartOrder(IReadOnlyList<string> orderedIds)
+    {
+        if (orderedIds.Count == 0 || _session.Parts.Count == 0)
+            return;
+
+        var rank = orderedIds
+            .Select((id, index) => new { id, index })
+            .ToDictionary(x => x.id, x => x.index, StringComparer.Ordinal);
+
+        var reordered = _session.Parts
+            .Select((part, originalIndex) => new { part, originalIndex })
+            .OrderBy(x => rank.TryGetValue(x.part.Id, out var r) ? r : int.MaxValue)
+            .ThenBy(x => x.originalIndex)
+            .Select(x => x.part)
+            .ToList();
+
+        _session.Parts.Clear();
+        _session.Parts.AddRange(reordered);
+        RebuildPartList();
+    }
+
+    private void RebuildPartList()
+    {
+        _reorderingParts = true;
+        try
+        {
+            _parts.Items.Clear();
+            foreach (var part in _session.Parts)
+                _parts.Items.Add(part, part.Visible);
+        }
+        finally
+        {
+            _reorderingParts = false;
+        }
+
+        _viewer.InvalidateScene();
+    }
+
     private void SaveProfile()
     {
         if (_session.Scene is null)
@@ -244,7 +367,8 @@ public sealed class MainForm : Form
         {
             SourceFbx = Path.GetFileName(_session.FilePath),
             Animation = (_animations.SelectedItem as AnimationTake)?.Name,
-            HiddenPartIds = _session.Parts.Where(p => !p.Visible).Select(p => p.Id).ToList()
+            HiddenPartIds = _session.Parts.Where(p => !p.Visible).Select(p => p.Id).ToList(),
+            PartOrderIds = _session.Parts.Select(p => p.Id).ToList()
         }.Save(dialog.FileName);
     }
 
@@ -260,6 +384,10 @@ public sealed class MainForm : Form
             return;
 
         var profile = VisibilityProfile.Load(dialog.FileName);
+
+        if (profile.PartOrderIds.Count > 0)
+            ApplyPartOrder(profile.PartOrderIds);
+
         var hidden = profile.HiddenPartIds.ToHashSet(StringComparer.Ordinal);
         for (var i = 0; i < _session.Parts.Count; i++)
         {
