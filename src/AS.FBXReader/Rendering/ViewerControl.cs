@@ -14,6 +14,8 @@ public sealed class ViewerControl : UserControl
     private AnimationPlayer? _player;
     private readonly SceneRenderer _renderer = new();
 
+    public event EventHandler<ScenePart>? PartPicked;
+
     public ViewerControl()
     {
         Dock = DockStyle.Fill;
@@ -55,6 +57,21 @@ public sealed class ViewerControl : UserControl
             if (_gl.ClientSize.Height > 0)
                 GL.Viewport(0, 0, _gl.ClientSize.Width, _gl.ClientSize.Height);
             _gl.Invalidate();
+        };
+
+        _gl.MouseClick += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Left || _session is null || _player is null)
+                return;
+
+            var part = _renderer.PickPart(
+                e.X,
+                e.Y,
+                Math.Max(1, _gl.ClientSize.Width),
+                Math.Max(1, _gl.ClientSize.Height));
+
+            if (part != null)
+                PartPicked?.Invoke(this, part);
         };
     }
 
