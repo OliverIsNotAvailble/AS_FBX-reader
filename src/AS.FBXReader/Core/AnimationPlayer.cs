@@ -12,6 +12,9 @@ public sealed class AnimationPlayer
         public List<NodeState> Children { get; } = new();
         public Matrix4 Local { get; set; }
         public Matrix4 Global { get; set; }
+        public Vector3 BaseScale { get; init; } = Vector3.One;
+        public Quaternion BaseRotation { get; init; } = Quaternion.Identity;
+        public Vector3 BaseTranslation { get; init; } = Vector3.Zero;
     }
 
     private readonly FbxSession _session;
@@ -100,7 +103,11 @@ public sealed class AnimationPlayer
             var bone = mesh.Bones[i];
             var boneGlobal = GetGlobalTransform(bone.Name);
             var offset = MatrixUtil.ToOpenTk(bone.OffsetMatrix);
-            result[i] = inverseMesh * boneGlobal * offset;
+
+            // OpenTK TransformPosition uses row-vector semantics:
+            // p' = p * matrix. Therefore the standard Assimp skinning chain is
+            // offset * boneGlobal * inverseMeshGlobal.
+            result[i] = offset * boneGlobal * inverseMesh;
         }
         return result;
     }
@@ -125,13 +132,35 @@ public sealed class AnimationPlayer
 
     private NodeState BuildTree(Node node, NodeState? parent)
     {
+        var local = MatrixUtil.ToOpenTk(node.Transform);
+
+        var baseScale = Vector3.One;
+        var baseRotation = Quaternion.Identity;
+        var baseTranslation = Vector3.Zero;
+        if (System.Numerics.Matrix4x4.Decompose(
+                node.Transform,
+                out var scaleN,
+                out var rotationN,
+                out var translationN))
+        {
+            baseScale = MatrixUtil.ToOpenTk(scaleN);
+            baseRotation = MatrixUtil.ToOpenTk(rotationN);
+            baseTranslation = MatrixUtil.ToOpenTk(translationN);
+        }
+
         var state = new NodeState
         {
             Node = node,
             Parent = parent,
-            Local = MatrixUtil.ToOpenTk(node.Transform)
+            Local = local,
+            BaseScale = baseScale,
+            BaseRotation = baseRotation,
+            BaseTranslation = baseTranslation
         };
-        state.Global = parent is null ? state.Local : parent.Global * state.Local;
+
+        // Row-vector convention: child local transform is applied first,
+        // then its parent's global transform.
+        state.Global = parent is null ? state.Local : state.Local * parent.Global;
         _states[node.Name] = state;
 
         foreach (var child in node.Children)
@@ -160,9 +189,9 @@ public sealed class AnimationPlayer
             var tps = animation.TicksPerSecond > 0.000001 ? animation.TicksPerSecond : 25.0;
             var ticks = TimeSeconds * tps;
 
-            var scale = SampleVector(channel.ScalingKeys, ticks, Vector3.One);
-            var rotation = SampleQuaternion(channel.RotationKeys, ticks, Quaternion.Identity);
-            var translation = SampleVector(channel.PositionKeys, ticks, Vector3.Zero);
+            var scale = SampleVector(channel.ScalingKeys, ticks, state.BaseScale);
+            var rotation = SampleQuaternion(channel.RotationKeys, ticks, state.BaseRotation);
+            var translation = SampleVector(channel.PositionKeys, ticks, state.BaseTranslation);
 
             local =
                 Matrix4.CreateScale(scale) *
@@ -171,7 +200,7 @@ public sealed class AnimationPlayer
         }
 
         state.Local = local;
-        state.Global = state.Parent is null ? local : state.Parent.Global * local;
+        state.Global = state.Parent is null ? local : local * state.Parent.Global;
 
         foreach (var child in state.Children)
             EvaluateNode(child);
