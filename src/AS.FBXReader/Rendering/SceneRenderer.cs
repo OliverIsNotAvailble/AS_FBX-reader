@@ -299,17 +299,24 @@ public sealed class SceneRenderer : IDisposable
 
     private void ApplyBlendMode()
     {
+        // Keep alpha accumulation correct for transparent offscreen exports.
+        // RGB changes between straight and premultiplied source data; alpha is
+        // always accumulated as srcA + dstA * (1-srcA).
         if (_premultiplyAlpha)
         {
-            GL.BlendFunc(
-                BlendingFactor.One,
-                BlendingFactor.OneMinusSrcAlpha);
+            GL.BlendFuncSeparate(
+                BlendingFactorSrc.One,
+                BlendingFactorDest.OneMinusSrcAlpha,
+                BlendingFactorSrc.One,
+                BlendingFactorDest.OneMinusSrcAlpha);
         }
         else
         {
-            GL.BlendFunc(
-                BlendingFactor.SrcAlpha,
-                BlendingFactor.OneMinusSrcAlpha);
+            GL.BlendFuncSeparate(
+                BlendingFactorSrc.SrcAlpha,
+                BlendingFactorDest.OneMinusSrcAlpha,
+                BlendingFactorSrc.One,
+                BlendingFactorDest.OneMinusSrcAlpha);
         }
     }
 
