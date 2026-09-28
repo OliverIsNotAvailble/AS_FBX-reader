@@ -25,6 +25,9 @@ public sealed class ScenePart
         if (!Visible)
             return false;
 
+        if (ForceVisible)
+            return true;
+
         if (animation is not null)
         {
             var key = VisibilityKeys
@@ -35,7 +38,7 @@ public sealed class ScenePart
                 return key.Visible;
         }
 
-        return ForceVisible || sourceVisible;
+        return sourceVisible;
     }
 
     public override string ToString() => DisplayName;

@@ -21,7 +21,10 @@ public sealed class MainForm : Form
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 16 };
 
     private DateTime _lastTick = DateTime.UtcNow;
+    private DateTime _lastDragScroll = DateTime.MinValue;
     private TreeNode? _dragNode;
+    private TreeNode? _dropTarget;
+    private DropPlacement _dropPlacement;
     private bool _updatingTree;
     private ImageList? _checkStateImages;
     private Font? _groupFont;
@@ -31,11 +34,13 @@ public sealed class MainForm : Form
     private const int StateChecked = 1;
     private const int StateMixed = 2;
 
+    private enum DropPlacement { None, Before, After, Inside }
+
     public MainForm()
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.1.10";
+        Text = "AS_FBX-reader 0.1.11";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -55,10 +60,11 @@ public sealed class MainForm : Form
         var toolbar = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 62,
+            Height = 72,
             Padding = new Padding(8, 9, 8, 7),
             WrapContents = false,
-            AutoSize = false
+            AutoSize = false,
+            AutoScroll = true
         };
 
         var open = Button("Open FBX", (_, _) => OpenFbx());
@@ -91,7 +97,7 @@ public sealed class MainForm : Form
         };
 
         _animations.DropDownStyle = ComboBoxStyle.DropDownList;
-        _animations.Width = 300;
+        _animations.Width = 240;
         _animations.Margin = new Padding(5);
 
         toolbar.Controls.AddRange([
@@ -110,7 +116,12 @@ public sealed class MainForm : Form
             saveProfile,
             loadProfile,
             export,
-            pma
+            pma,
+            Button("Allow all", (_, _) => SetAll(true)),
+            Button("Hide all", (_, _) => SetAll(false)),
+            Button("Force all", (_, _) => ForceAll()),
+            Button("Solo", (_, _) => SoloSelected()),
+            Button("New group", (_, _) => CreateRootGroup())
         ]);
 
         var split = new SplitContainer
@@ -120,28 +131,9 @@ public sealed class MainForm : Form
             FixedPanel = FixedPanel.Panel1
         };
 
-        var leftButtons = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            Height = 58,
-            Padding = new Padding(6, 7, 6, 5),
-            WrapContents = false
-        };
-        leftButtons.Controls.Add(Button("Allow all", (_, _) => SetAll(true)));
-        leftButtons.Controls.Add(Button("Hide all", (_, _) => SetAll(false)));
-        leftButtons.Controls.Add(Button("Solo", (_, _) => SoloSelected()));
-        leftButtons.Controls.Add(Button("New group", (_, _) => CreateRootGroup()));
-        leftButtons.Controls.Add(new Label
-        {
-            Text = "TOP = FRONT",
-            AutoSize = true,
-            Padding = new Padding(10, 9, 0, 0)
-        });
-
         ConfigurePartsTree();
 
         split.Panel1.Controls.Add(_parts);
-        split.Panel1.Controls.Add(leftButtons);
         split.Panel2.Controls.Add(_viewer);
 
         _timeline.Dock = DockStyle.Bottom;
@@ -175,6 +167,8 @@ public sealed class MainForm : Form
         _parts.ShowPlusMinus = true;
         _parts.ShowRootLines = true;
         _parts.AllowDrop = true;
+        _parts.LabelEdit = true;
+        _parts.DrawMode = TreeViewDrawMode.OwnerDrawText;
         _parts.StateImageList = _checkStateImages;
         _parts.ItemHeight = Math.Max(checkSize + 8, Font.Height + 12);
         _parts.Indent = Math.Max(checkSize + 10, 32);
@@ -251,6 +245,35 @@ public sealed class MainForm : Form
 
     private void HookEvents()
     {
+        _parts.DrawNode += (_, e) =>
+        {
+            if (e.Node != _dropTarget ||
+                _dropPlacement is not (DropPlacement.Before or DropPlacement.After))
+            {
+                e.DrawDefault = true;
+                return;
+            }
+
+            // Draw the target text ourselves so WinForms does not erase the
+            // insertion line with its default text painting afterwards.
+            var selected = (e.State & TreeNodeStates.Selected) != 0;
+            var back = selected ? SystemColors.Highlight : _parts.BackColor;
+            var fore = selected ? SystemColors.HighlightText : _parts.ForeColor;
+            using (var brush = new SolidBrush(back))
+                e.Graphics.FillRectangle(brush, e.Bounds);
+            TextRenderer.DrawText(
+                e.Graphics, e.Node.Text, e.Node.NodeFont ?? _parts.Font,
+                e.Bounds, fore,
+                TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter |
+                TextFormatFlags.EndEllipsis);
+
+            var y = _dropPlacement == DropPlacement.Before
+                ? e.Node.Bounds.Top + 1
+                : e.Node.Bounds.Bottom - 2;
+            using var pen = new Pen(Color.FromArgb(25, 105, 190), 3);
+            e.Graphics.DrawLine(pen, 2, y, _parts.ClientSize.Width - 4, y);
+        };
+
         _parts.NodeMouseClick += (_, e) =>
         {
             _parts.SelectedNode = e.Node;
@@ -261,8 +284,53 @@ public sealed class MainForm : Form
             }
         };
 
+        _parts.NodeMouseDoubleClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left &&
+                e.Node.Tag is ScenePart &&
+                !IsStateImageClick(e.Node, e.Location))
+                BeginRenamePart(e.Node);
+        };
+
+        _parts.BeforeLabelEdit += (_, e) =>
+        {
+            if (e.Node?.Tag is not ScenePart)
+                e.CancelEdit = true;
+        };
+
+        _parts.AfterLabelEdit += (_, e) =>
+        {
+            // Always restore the display suffixes after editing the short alias.
+            e.CancelEdit = true;
+            var node = e.Node;
+            if (node?.Tag is not ScenePart part)
+                return;
+
+            if (e.Label is not null)
+            {
+                var name = e.Label.Trim();
+                part.Alias = name.Length == 0 || name == part.Name ? null : name;
+                _status.Text = part.Alias is null
+                    ? $"Alias cleared: {part.Name}"
+                    : $"Alias: {part.Alias} <- {part.Name}";
+            }
+
+            _parts.BeginInvoke(new Action(() =>
+            {
+                if (node.TreeView == _parts)
+                    node.Text = part.DisplayName;
+            }));
+        };
+
         _parts.KeyDown += (_, e) =>
         {
+            if (e.KeyCode == Keys.F2 && _parts.SelectedNode is { Tag: ScenePart } node)
+            {
+                BeginRenamePart(node);
+                e.Handled = true;
+                return;
+            }
+
             if (e.KeyCode == Keys.Space && _parts.SelectedNode != null)
             {
                 ToggleNode(_parts.SelectedNode);
@@ -276,7 +344,15 @@ public sealed class MainForm : Form
                 return;
 
             _dragNode = node;
-            _parts.DoDragDrop(node, DragDropEffects.Move);
+            try
+            {
+                _parts.DoDragDrop(node, DragDropEffects.Move);
+            }
+            finally
+            {
+                _dragNode = null;
+                ClearDropIndicator();
+            }
         };
 
         _parts.DragOver += (_, e) =>
@@ -289,19 +365,21 @@ public sealed class MainForm : Form
             }
 
             var client = _parts.PointToClient(new Point(e.X, e.Y));
-            var target = _parts.GetNodeAt(client);
+            ScrollTreeDuringDrag(client.Y);
+            var (target, placement) = GetDropLocation(client);
 
-            if (target != null && IsNodeInside(_dragNode, target))
+            if (target == null || IsNodeInside(_dragNode, target))
             {
                 e.Effect = DragDropEffects.None;
+                ClearDropIndicator();
                 return;
             }
 
-            if (target != null)
-                _parts.SelectedNode = target;
-
+            SetDropIndicator(target, placement);
             e.Effect = DragDropEffects.Move;
         };
+
+        _parts.DragLeave += (_, _) => ClearDropIndicator();
 
         _parts.DragDrop += (_, e) =>
         {
@@ -309,15 +387,14 @@ public sealed class MainForm : Form
                 return;
 
             var source = _dragNode;
-            _dragNode = null;
-
             var client = _parts.PointToClient(new Point(e.X, e.Y));
-            var target = _parts.GetNodeAt(client);
+            var (target, placement) = GetDropLocation(client);
+            ClearDropIndicator();
 
-            if (target != null && IsNodeInside(source, target))
+            if (target == null || IsNodeInside(source, target))
                 return;
 
-            MoveTreeNode(source, target);
+            MoveTreeNode(source, target, placement);
         };
 
         _parts.MouseDown += (_, e) =>
@@ -579,10 +656,32 @@ public sealed class MainForm : Form
     private void SetAll(bool visible)
     {
         foreach (var part in _session.Parts)
+        {
             part.Visible = visible;
+            if (visible)
+                part.ForceVisible = false;
+        }
 
         RefreshGroupStates();
+        RefreshPartNodeTexts();
         _viewer.InvalidateScene();
+        _status.Text = visible
+            ? "All parts allowed; FBX timing restored."
+            : "All parts hidden.";
+    }
+
+    private void ForceAll()
+    {
+        foreach (var part in _session.Parts)
+        {
+            part.Visible = true;
+            part.ForceVisible = true;
+        }
+
+        RefreshGroupStates();
+        RefreshPartNodeTexts();
+        _viewer.InvalidateScene();
+        _status.Text = "All parts forced visible; Allow all restores FBX timing.";
     }
 
     private void SoloSelected()
@@ -698,18 +797,102 @@ public sealed class MainForm : Form
         _viewer.InvalidateScene();
     }
 
-    private void MoveTreeNode(TreeNode source, TreeNode? target)
+    private (TreeNode? Target, DropPlacement Placement) GetDropLocation(Point client)
     {
-        if (source == target)
+        if (_parts.Nodes.Count == 0)
+            return (null, DropPlacement.None);
+
+        var target = _parts.GetNodeAt(client);
+        if (target == null)
+        {
+            // Win32 hit testing can miss a row when the pointer is left/right
+            // of its label. Use the visible row's Y coordinate instead.
+            for (var row = _parts.TopNode; row != null; row = row.NextVisibleNode)
+            {
+                if (client.Y >= row.Bounds.Top && client.Y < row.Bounds.Bottom)
+                {
+                    target = row;
+                    break;
+                }
+                if (row.Bounds.Top > _parts.ClientSize.Height)
+                    break;
+            }
+        }
+
+        if (target == null)
+        {
+            if (client.Y <= (_parts.TopNode?.Bounds.Top ?? 0))
+                return (_parts.Nodes[0], DropPlacement.Before);
+
+            if (client.Y >= 0 && client.Y < _parts.ClientSize.Height)
+                return (_parts.Nodes[_parts.Nodes.Count - 1], DropPlacement.After);
+
+            return (null, DropPlacement.None);
+        }
+
+        var bounds = target.Bounds;
+        if (target.Tag is PartGroup)
+        {
+            var edge = Math.Max(5, bounds.Height / 4);
+            if (client.Y < bounds.Top + edge)
+                return (target, DropPlacement.Before);
+            if (client.Y >= bounds.Bottom - edge)
+                return (target, DropPlacement.After);
+            return (target, DropPlacement.Inside);
+        }
+
+        return (target, client.Y < bounds.Top + bounds.Height / 2
+            ? DropPlacement.Before
+            : DropPlacement.After);
+    }
+
+    private void ScrollTreeDuringDrag(int y)
+    {
+        if (DateTime.UtcNow - _lastDragScroll < TimeSpan.FromMilliseconds(140))
+            return;
+
+        var top = _parts.TopNode;
+        if (top == null)
+            return;
+
+        if (y < 20 && top.PrevVisibleNode is { } previous)
+            _parts.TopNode = previous;
+        else if (y > _parts.ClientSize.Height - 20 && top.NextVisibleNode is { } next)
+            _parts.TopNode = next;
+        else
+            return;
+
+        _lastDragScroll = DateTime.UtcNow;
+    }
+
+    private void SetDropIndicator(TreeNode target, DropPlacement placement)
+    {
+        if (_dropTarget == target && _dropPlacement == placement)
+            return;
+
+        _dropTarget = target;
+        _dropPlacement = placement;
+        _parts.Invalidate();
+    }
+
+    private void ClearDropIndicator()
+    {
+        if (_dropTarget == null)
+            return;
+
+        _dropTarget = null;
+        _dropPlacement = DropPlacement.None;
+        _parts.Invalidate();
+    }
+
+    private void MoveTreeNode(TreeNode source, TreeNode target, DropPlacement placement)
+    {
+        if (source == target || placement == DropPlacement.None)
             return;
 
         source.Remove();
 
-        if (target == null)
-        {
-            _parts.Nodes.Add(source);
-        }
-        else if (target.Tag is PartGroup)
+        if (placement == DropPlacement.Inside && target.Tag is PartGroup)
         {
             target.Nodes.Add(source);
             target.Expand();
@@ -717,7 +900,7 @@ public sealed class MainForm : Form
         else
         {
             var collection = target.Parent?.Nodes ?? _parts.Nodes;
-            collection.Insert(target.Index, source);
+            collection.Insert(target.Index + (placement == DropPlacement.After ? 1 : 0), source);
         }
 
         _parts.SelectedNode = source;
@@ -732,7 +915,7 @@ public sealed class MainForm : Form
             ? group.Name
             : "ROOT";
 
-        _status.Text = $"Moved: {movedName} -> {destination} | TOP = FRONT";
+        _status.Text = $"Moved: {movedName} -> {destination}";
     }
 
     private static bool IsNodeInside(TreeNode source, TreeNode potentialDescendant)
@@ -849,7 +1032,7 @@ public sealed class MainForm : Form
                 Checked = part.ForceVisible
             });
             _partsMenu.Items.Add(new ToolStripSeparator());
-            _partsMenu.Items.Add("Rename alias...", null, (_, _) => RenameSelectedPart());
+            _partsMenu.Items.Add("Rename...", null, (_, _) => RenameSelectedPart());
             _partsMenu.Items.Add("Clear alias", null, (_, _) => ClearSelectedAlias());
             _partsMenu.Items.Add(new ToolStripSeparator());
         }
@@ -901,26 +1084,27 @@ public sealed class MainForm : Form
 
     private void RenameSelectedPart()
     {
-        if (_parts.SelectedNode?.Tag is not ScenePart part)
+        if (_parts.SelectedNode is not { Tag: ScenePart } node)
             return;
 
-        var alias = PromptForText(
-            "Rename mesh alias",
-            $"Original: {part.Name}",
-            part.Alias ?? string.Empty);
+        BeginRenamePart(node);
+    }
 
-        if (alias is null)
+    private void BeginRenamePart(TreeNode node)
+    {
+        if (node.Tag is not ScenePart part)
             return;
 
-        part.Alias = string.IsNullOrWhiteSpace(alias)
-            ? null
-            : alias.Trim();
+        _parts.BeginInvoke(new Action(() =>
+        {
+            if (node.TreeView != _parts)
+                return;
 
-        _parts.SelectedNode.Text = part.DisplayName;
-
-        _status.Text = string.IsNullOrWhiteSpace(part.Alias)
-            ? $"Alias cleared: {part.Name}"
-            : $"Alias: {part.Alias} <- {part.Name}";
+            _parts.SelectedNode = node;
+            _parts.Focus();
+            node.Text = part.Alias ?? part.Name;
+            node.BeginEdit();
+        }));
     }
 
     private void ClearSelectedAlias()

@@ -38,6 +38,17 @@ to remove a key. Save the profile to keep these timing keys.
 one part also forces that part visible so even a normally hidden mesh can be
 examined. Uncheck the force option to return to the FBX timing.
 
+The top toolbar has **Force all** to expose every part, including those hidden
+by FBX or manual timing keys. **Allow all** clears the forced state and resumes
+the FBX/manual timing while keeping all parts enabled. **Hide all** disables all
+parts. These choices and the per-part aliases are stored in the profile.
+
+Double-click a mesh name, press F2, or use **Rename...** in its context menu to
+edit its alias directly in the tree. A blank alias restores the FBX name.
+Drag a mesh or group above/below a row to insert it at the blue line; dragging
+to the middle of a group puts it inside that group. The tree scrolls while
+dragging near its top or bottom edge. The top of the tree renders in front.
+
 ## Current test case
 
 The current `agnes_h` test FBX has been checked at the FBX object level:
