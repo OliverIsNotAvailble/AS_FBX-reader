@@ -18,9 +18,9 @@ current code when resuming work in a later conversation.
   in the middle of a group adds to that group; blank space above/below the list
   accepts a first/last root drop. Dragging near an edge scrolls the tree.
 - Files: `MainForm.cs`, `ScenePart.cs`, `README.md`, this changelog.
-- Verification: `git diff --check` passed. Windows/.NET 9 build and interactive
-  drag/drop verification remain to be run; the current workspace has no
-  `dotnet` executable.
+- Verification: `git diff --check` passed and the Windows/.NET 9 GitHub Actions
+  build succeeded: https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/36495788294.
+  Interactive drag/drop and layout verification on Windows remain to be done.
 
 ### Work carried into this checkout
 
@@ -29,4 +29,4 @@ per-part force visibility, and manually timed visibility keys when these UI
 changes began. The recovery and visibility settings are preserved here. Their
 source changes are in `AnimationPlayer.cs`, `SceneRenderer.cs`, `ScenePart.cs`,
 `VisibilityProfile.cs`, `MainForm.cs`, and `README.md`; they still need the same
-Windows build and visual verification.
+visual verification on Windows; the 0.1.11 CI build succeeded.
