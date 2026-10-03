@@ -111,7 +111,7 @@ public sealed class AnimationPlayer
     public bool IsSourceVisible(string nodeName)
         => !_states.TryGetValue(nodeName, out var state) || state.SourceVisible;
 
-    public Matrix4[] GetBoneMatrices(Node meshNode, Mesh mesh)
+    public Matrix4[] GetBoneMatrices(Node meshNode, Mesh mesh, bool rebuildBindPose = false)
     {
         var result = new Matrix4[mesh.BoneCount];
         if (mesh.BoneCount == 0)
@@ -127,7 +127,7 @@ public sealed class AnimationPlayer
             if (_states.TryGetValue(meshNode.Name, out var meshState) &&
                 _states.TryGetValue(bone.Name, out var boneState))
             {
-                if (meshState.CollapsedMesh || !IsFinite(offset))
+                if (rebuildBindPose || meshState.CollapsedMesh || !IsFinite(offset))
                 {
                     // Row-vector bind pose: meshBind * inverse(boneBind).
                     // Assimp can normalize a broken FBX bind into a finite but

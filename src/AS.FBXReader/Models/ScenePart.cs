@@ -11,6 +11,10 @@ public sealed class ScenePart
     public bool HasBones { get; init; }
     public bool Visible { get; set; } = true;
     public bool ForceVisible { get; set; }
+    // World-space correction after skinning; applies to preview and export.
+    public float OffsetX { get; set; }
+    public float OffsetY { get; set; }
+    public bool RebuildBindPose { get; set; }
     public List<VisibilityKeyframe> VisibilityKeys { get; } = new();
 
     public string DisplayName

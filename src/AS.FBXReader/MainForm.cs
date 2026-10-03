@@ -40,7 +40,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.1.11";
+        Text = "AS_FBX-reader 0.1.12";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -416,6 +416,10 @@ public sealed class MainForm : Form
             _parts.SelectedNode = node;
             node.EnsureVisible();
             _status.Text = $"Selected from preview: {part.DisplayName}";
+        };
+        _viewer.PartMoved += (_, part) =>
+        {
+            _status.Text = $"Moved {part.DisplayName}: X {part.OffsetX:0.###}, Y {part.OffsetY:0.###}. Save profile to keep it.";
         };
 
         _animations.SelectedIndexChanged += (_, _) =>
@@ -1032,6 +1036,23 @@ public sealed class MainForm : Form
                 Checked = part.ForceVisible
             });
             _partsMenu.Items.Add(new ToolStripSeparator());
+            _partsMenu.Items.Add("Move mesh in preview (drag)", null,
+                (_, _) => BeginMovePart(part));
+            _partsMenu.Items.Add(new ToolStripMenuItem(
+                "Reset mesh position", null, (_, _) => ResetMeshPosition(part))
+            {
+                Enabled = part.OffsetX != 0f || part.OffsetY != 0f
+            });
+            if (part.HasBones)
+            {
+                _partsMenu.Items.Add(new ToolStripMenuItem(
+                    "Rebuild skin bind pose (deformed mesh)", null,
+                    (_, _) => ToggleRebuildBindPose(part))
+                {
+                    Checked = part.RebuildBindPose
+                });
+            }
+            _partsMenu.Items.Add(new ToolStripSeparator());
             _partsMenu.Items.Add("Rename...", null, (_, _) => RenameSelectedPart());
             _partsMenu.Items.Add("Clear alias", null, (_, _) => ClearSelectedAlias());
             _partsMenu.Items.Add(new ToolStripSeparator());
@@ -1053,6 +1074,28 @@ public sealed class MainForm : Form
         RefreshPartNodeTexts();
         _viewer.InvalidateScene();
         _status.Text = $"{part.Name}: {(part.ForceVisible ? "forced visible" : "FBX animation visibility")}";
+    }
+
+    private void BeginMovePart(ScenePart part)
+    {
+        _viewer.BeginMovePart(part);
+        _status.Text = $"Drag in preview to move {part.DisplayName}; Esc cancels. Save profile after moving.";
+    }
+
+    private void ResetMeshPosition(ScenePart part)
+    {
+        _viewer.EndMovePart();
+        part.OffsetX = 0f;
+        part.OffsetY = 0f;
+        _viewer.InvalidateScene();
+        _status.Text = $"Position reset: {part.DisplayName}";
+    }
+
+    private void ToggleRebuildBindPose(ScenePart part)
+    {
+        part.RebuildBindPose = !part.RebuildBindPose;
+        _viewer.InvalidateScene();
+        _status.Text = $"{part.DisplayName}: bind pose repair {(part.RebuildBindPose ? "on" : "off")}. Save profile to keep it.";
     }
 
     private void SetVisibilityKey(ScenePart part, string take, double seconds, bool visible)
@@ -1156,6 +1199,16 @@ public sealed class MainForm : Form
             PartAliases = _session.Parts
                 .Where(p => !string.IsNullOrWhiteSpace(p.Alias))
                 .ToDictionary(p => p.Id, p => p.Alias!, StringComparer.Ordinal),
+            MeshAdjustments = _session.Parts
+                .Where(p => p.OffsetX != 0f || p.OffsetY != 0f || p.RebuildBindPose)
+                .ToDictionary(
+                    p => p.Id,
+                    p => new MeshAdjustmentProfile
+                    {
+                        OffsetX = p.OffsetX,
+                        OffsetY = p.OffsetY,
+                        RebuildBindPose = p.RebuildBindPose
+                    }, StringComparer.Ordinal),
             Organization = BuildOrganizationProfile()
         }.Save(dialog.FileName);
 
@@ -1238,6 +1291,10 @@ public sealed class MainForm : Form
         {
             part.Visible = !hidden.Contains(part.Id);
             part.ForceVisible = forced.Contains(part.Id);
+            profile.MeshAdjustments.TryGetValue(part.Id, out var adjustment);
+            part.OffsetX = adjustment?.OffsetX ?? 0f;
+            part.OffsetY = adjustment?.OffsetY ?? 0f;
+            part.RebuildBindPose = adjustment?.RebuildBindPose ?? false;
             part.VisibilityKeys.Clear();
             part.VisibilityKeys.AddRange(profile.VisibilityKeys.Where(x => x.PartId == part.Id));
         }

@@ -15,6 +15,7 @@ public sealed class VisibilityProfile
     public List<string> PartOrderIds { get; set; } = new();
 
     public Dictionary<string, string> PartAliases { get; set; } = new();
+    public Dictionary<string, MeshAdjustmentProfile> MeshAdjustments { get; set; } = new();
 
     // V0.1.6+: folders/subfolders + exact visual ordering.
     public List<OrganizationNodeProfile> Organization { get; set; } = new();
@@ -33,6 +34,13 @@ public sealed class VisibilityProfile
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
+}
+
+public sealed class MeshAdjustmentProfile
+{
+    public float OffsetX { get; set; }
+    public float OffsetY { get; set; }
+    public bool RebuildBindPose { get; set; }
 }
 
 public sealed class OrganizationNodeProfile

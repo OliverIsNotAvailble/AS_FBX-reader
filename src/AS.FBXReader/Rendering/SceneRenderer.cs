@@ -98,6 +98,14 @@ public sealed class SceneRenderer : IDisposable
 
     public FramingState GetFraming() => _framing.Clone();
 
+    public (float X, float Y) GetWorldUnitsPerPixel(int width, int height)
+    {
+        width = Math.Max(1, width);
+        height = Math.Max(1, height);
+        var view = BuildView(PrepareVisibleParts(), width, height);
+        return ((view.Right - view.Left) / width, (view.Top - view.Bottom) / height);
+    }
+
     public void SetFraming(FramingState framing)
     {
         _framing = framing.Clone();
@@ -234,7 +242,7 @@ public sealed class SceneRenderer : IDisposable
                 part,
                 node,
                 mesh,
-                GetWorldPositions(node, mesh)));
+                GetWorldPositions(node, mesh, part)));
         }
 
         return prepared;
@@ -345,12 +353,14 @@ public sealed class SceneRenderer : IDisposable
         GL.Uniform1(GL.GetUniformLocation(_program, "uUseTexture"), 1);
     }
 
-    private Vector3[] GetWorldPositions(Node node, Mesh mesh)
+    private Vector3[] GetWorldPositions(Node node, Mesh mesh, ScenePart part)
     {
         if (_player is null)
             return Array.Empty<Vector3>();
 
-        var boneMatrices = mesh.HasBones ? _player.GetBoneMatrices(node, mesh) : Array.Empty<Matrix4>();
+        var boneMatrices = mesh.HasBones
+            ? _player.GetBoneMatrices(node, mesh, part.RebuildBindPose)
+            : Array.Empty<Matrix4>();
         var positions = new Vector3[mesh.VertexCount];
         var weightsByVertex = mesh.HasBones ? BuildWeights(mesh) : null;
         var meshGlobal = _player.GetGlobalTransform(node.Name);
@@ -378,7 +388,8 @@ public sealed class SceneRenderer : IDisposable
                     p = skinned / total;
             }
 
-            positions[i] = Vector3.TransformPosition(p, meshGlobal);
+            positions[i] = Vector3.TransformPosition(p, meshGlobal) +
+                new Vector3(part.OffsetX, part.OffsetY, 0f);
         }
 
         return positions;

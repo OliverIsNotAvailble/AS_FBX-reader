@@ -13,8 +13,17 @@ public sealed class ViewerControl : UserControl
     private FbxSession? _session;
     private AnimationPlayer? _player;
     private readonly SceneRenderer _renderer = new();
+    private ScenePart? _movingPart;
+    private Point _dragStart;
+    private float _startOffsetX;
+    private float _startOffsetY;
+    private float _unitsPerPixelX;
+    private float _unitsPerPixelY;
+    private bool _dragged;
+    private bool _suppressNextClick;
 
     public event EventHandler<ScenePart>? PartPicked;
+    public event EventHandler<ScenePart>? PartMoved;
 
     public ViewerControl()
     {
@@ -61,7 +70,13 @@ public sealed class ViewerControl : UserControl
 
         _gl.MouseClick += (_, e) =>
         {
-            if (e.Button != MouseButtons.Left || _session is null || _player is null)
+            if (_suppressNextClick)
+            {
+                _suppressNextClick = false;
+                return;
+            }
+            if (e.Button != MouseButtons.Left || _movingPart != null ||
+                _session is null || _player is null)
                 return;
 
             var part = _renderer.PickPart(
@@ -73,10 +88,93 @@ public sealed class ViewerControl : UserControl
             if (part != null)
                 PartPicked?.Invoke(this, part);
         };
+
+        _gl.MouseDown += (_, e) =>
+        {
+            if (_movingPart is null)
+            {
+                _suppressNextClick = false;
+                return;
+            }
+            if (e.Button != MouseButtons.Left)
+                return;
+
+            _gl.Focus();
+            _dragStart = e.Location;
+            _startOffsetX = _movingPart.OffsetX;
+            _startOffsetY = _movingPart.OffsetY;
+            _dragged = false;
+            (_unitsPerPixelX, _unitsPerPixelY) = _renderer.GetWorldUnitsPerPixel(
+                _gl.ClientSize.Width, _gl.ClientSize.Height);
+            _gl.Capture = true;
+        };
+        _gl.MouseMove += (_, e) =>
+        {
+            if (_movingPart is null || !_gl.Capture ||
+                (e.Button & MouseButtons.Left) == 0)
+                return;
+
+            var dx = e.X - _dragStart.X;
+            var dy = e.Y - _dragStart.Y;
+            if (dx == 0 && dy == 0)
+                return;
+
+            _dragged = true;
+            _movingPart.OffsetX = _startOffsetX + dx * _unitsPerPixelX;
+            _movingPart.OffsetY = _startOffsetY - dy * _unitsPerPixelY;
+            _gl.Invalidate();
+        };
+        _gl.MouseUp += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Left || _movingPart is null)
+                return;
+
+            _gl.Capture = false;
+            if (!_dragged)
+                return;
+
+            var moved = _movingPart;
+            _suppressNextClick = true;
+            EndMovePart();
+            PartMoved?.Invoke(this, moved);
+        };
+        _gl.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Escape || _movingPart is null)
+                return;
+
+            _movingPart.OffsetX = _startOffsetX;
+            _movingPart.OffsetY = _startOffsetY;
+            EndMovePart();
+            _gl.Invalidate();
+            e.Handled = true;
+        };
+    }
+
+    public void BeginMovePart(ScenePart part)
+    {
+        EndMovePart();
+        _movingPart = part;
+        _startOffsetX = part.OffsetX;
+        _startOffsetY = part.OffsetY;
+        // Freeze automatic framing so the image does not chase the cursor.
+        if (!_renderer.GetFraming().Enabled)
+            _renderer.CaptureFramingReference();
+        _gl.Cursor = Cursors.SizeAll;
+        _gl.Focus();
+        _gl.Invalidate();
+    }
+
+    public void EndMovePart()
+    {
+        _gl.Capture = false;
+        _movingPart = null;
+        _gl.Cursor = Cursors.Default;
     }
 
     public void Attach(FbxSession session, AnimationPlayer player)
     {
+        EndMovePart();
         _session = session;
         _player = player;
         _renderer.SetScene(session, player);

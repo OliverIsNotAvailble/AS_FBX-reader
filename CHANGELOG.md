@@ -4,6 +4,29 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## 0.1.12 — 2026-10-03
+
+- Added right-click **Move mesh in preview (drag)**, a one-drag placement
+  correction and **Reset mesh position**. The offset is applied after skinning
+  in the shared preview/export renderer; automatic framing is frozen when
+  entering drag mode so it does not follow the cursor. Escape cancels.
+- Added per-mesh **Rebuild skin bind pose (deformed mesh)** for skinned parts.
+  It uses node bind transforms in place of suspect finite skin-cluster offsets
+  on that part only. The existing automatic recovery for zero-scale/NaN parts
+  remains active.
+- Profiles now store per-mesh X/Y offsets and bind-repair flags in
+  `MeshAdjustments`. Older profiles load with zero offsets and repair disabled.
+- Inspected `vamp_h.fbx`: `입오무` has zero-scale mesh and NaN skin bind
+  matrices, while `가슴` has 60 vertices and complete normalized weights but
+  finite, differing cluster bind matrices on its weighted bones. The mouth
+  can be placed manually; the bind-repair toggle offers a rest-shape recovery
+  for the distorted `가슴` without changing other meshes.
+- Files: `AnimationPlayer.cs`, `MainForm.cs`, `ScenePart.cs`,
+  `VisibilityProfile.cs`, `SceneRenderer.cs`, `ViewerControl.cs`, `README.md`,
+  this changelog.
+- Verification: raw FBX structure/weights inspected; `git diff --check`
+  passed. Windows preview/export visual confirmation is still needed.
+
 ## 0.1.11 — 2026-09-28
 
 - Put the part actions on the same top toolbar row as playback/export, removed

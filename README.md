@@ -49,6 +49,19 @@ Drag a mesh or group above/below a row to insert it at the blue line; dragging
 to the middle of a group puts it inside that group. The tree scrolls while
 dragging near its top or bottom edge. The top of the tree renders in front.
 
+To correct a part's placement, right-click its row and choose **Move mesh in
+preview (drag)**, then drag anywhere in the preview. Release to finish, or
+press Esc to cancel. **Reset mesh position** removes the correction. This
+shifts the whole mesh after its animation and skinning, so playback and export
+use the same placement. Save the profile to keep it; the FBX itself is not
+rewritten.
+
+For a mesh whose vertices are deformed by bad skin bind data, right-click and
+toggle **Rebuild skin bind pose (deformed mesh)**. It reconstructs that mesh's
+bone offsets from the FBX node hierarchy, making the undeformed mesh its rest
+shape while retaining animated bone movement. This is per mesh and is stored
+in the profile; toggle it off if the FBX's original bind data looks better.
+
 ## Current test case
 
 The current `agnes_h` test FBX has been checked at the FBX object level:
