@@ -4,6 +4,27 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## 0.1.13 — 2026-10-03
+
+- Added per-mesh **Preserve shape (follow main bone)** when rebuilding bind
+  offsets alone does not remove stretched triangles. The reader chooses the
+  bone with the largest total vertex weight, applies its animated transform
+  to every vertex, and keeps the source mesh/UV shape intact. This retains
+  movement while intentionally removing local skin deformation on that part.
+- Profiles now persist `PreserveShape` in `MeshAdjustments`; older profiles
+  default to the normal per-vertex skinning mode.
+- Compared the two `가슴` screenshots and independently rendered the raw
+  `vamp_h.fbx` geometry/UVs with skinning off. Its 60 vertices and 77
+  triangles produce a clean two-piece image; the triangular tearing happens
+  during bone deformation. `bone_2` carries 35.28 of 60 total vertex weights,
+  ahead of `bone_33` (15.81) and `bone_32` (8.91), so it is the selected
+  motion anchor for this mesh. The mouth placement drag was confirmed by the
+  user to work.
+- Files: `MainForm.cs`, `ScenePart.cs`, `VisibilityProfile.cs`,
+  `SceneRenderer.cs`, `README.md`, this changelog.
+- Verification: raw mesh/UV reconstruction and weight totals inspected;
+  Windows build and in-app `vamp_h` visual verification pending.
+
 ## 0.1.12 — 2026-10-03
 
 - Added right-click **Move mesh in preview (drag)**, a one-drag placement

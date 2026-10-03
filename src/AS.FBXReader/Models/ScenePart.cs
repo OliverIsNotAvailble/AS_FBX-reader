@@ -15,6 +15,7 @@ public sealed class ScenePart
     public float OffsetX { get; set; }
     public float OffsetY { get; set; }
     public bool RebuildBindPose { get; set; }
+    public bool PreserveShape { get; set; }
     public List<VisibilityKeyframe> VisibilityKeys { get; } = new();
 
     public string DisplayName

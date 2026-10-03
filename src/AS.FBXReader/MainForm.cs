@@ -40,7 +40,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.1.12";
+        Text = "AS_FBX-reader 0.1.13";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -1051,6 +1051,12 @@ public sealed class MainForm : Form
                 {
                     Checked = part.RebuildBindPose
                 });
+                _partsMenu.Items.Add(new ToolStripMenuItem(
+                    "Preserve shape (follow main bone)", null,
+                    (_, _) => TogglePreserveShape(part))
+                {
+                    Checked = part.PreserveShape
+                });
             }
             _partsMenu.Items.Add(new ToolStripSeparator());
             _partsMenu.Items.Add("Rename...", null, (_, _) => RenameSelectedPart());
@@ -1096,6 +1102,13 @@ public sealed class MainForm : Form
         part.RebuildBindPose = !part.RebuildBindPose;
         _viewer.InvalidateScene();
         _status.Text = $"{part.DisplayName}: bind pose repair {(part.RebuildBindPose ? "on" : "off")}. Save profile to keep it.";
+    }
+
+    private void TogglePreserveShape(ScenePart part)
+    {
+        part.PreserveShape = !part.PreserveShape;
+        _viewer.InvalidateScene();
+        _status.Text = $"{part.DisplayName}: preserve shape {(part.PreserveShape ? "on" : "off")}. Save profile to keep it.";
     }
 
     private void SetVisibilityKey(ScenePart part, string take, double seconds, bool visible)
@@ -1200,14 +1213,15 @@ public sealed class MainForm : Form
                 .Where(p => !string.IsNullOrWhiteSpace(p.Alias))
                 .ToDictionary(p => p.Id, p => p.Alias!, StringComparer.Ordinal),
             MeshAdjustments = _session.Parts
-                .Where(p => p.OffsetX != 0f || p.OffsetY != 0f || p.RebuildBindPose)
+                .Where(p => p.OffsetX != 0f || p.OffsetY != 0f || p.RebuildBindPose || p.PreserveShape)
                 .ToDictionary(
                     p => p.Id,
                     p => new MeshAdjustmentProfile
                     {
                         OffsetX = p.OffsetX,
                         OffsetY = p.OffsetY,
-                        RebuildBindPose = p.RebuildBindPose
+                        RebuildBindPose = p.RebuildBindPose,
+                        PreserveShape = p.PreserveShape
                     }, StringComparer.Ordinal),
             Organization = BuildOrganizationProfile()
         }.Save(dialog.FileName);
@@ -1295,6 +1309,7 @@ public sealed class MainForm : Form
             part.OffsetX = adjustment?.OffsetX ?? 0f;
             part.OffsetY = adjustment?.OffsetY ?? 0f;
             part.RebuildBindPose = adjustment?.RebuildBindPose ?? false;
+            part.PreserveShape = adjustment?.PreserveShape ?? false;
             part.VisibilityKeys.Clear();
             part.VisibilityKeys.AddRange(profile.VisibilityKeys.Where(x => x.PartId == part.Id));
         }

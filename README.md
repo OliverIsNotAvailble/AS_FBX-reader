@@ -62,6 +62,13 @@ bone offsets from the FBX node hierarchy, making the undeformed mesh its rest
 shape while retaining animated bone movement. This is per mesh and is stored
 in the profile; toggle it off if the FBX's original bind data looks better.
 
+If the bind repair still leaves stretched triangles, choose **Preserve shape
+(follow main bone)** on that part. It draws the original vertex/UV shape as
+one piece while moving with the bone that carries the most weight. This
+avoids tearing caused by incompatible weights, but removes that part's local
+skin deformation. It is a per-mesh, profile-saved option; normal parts keep
+their existing skinning.
+
 ## Current test case
 
 The current `agnes_h` test FBX has been checked at the FBX object level:

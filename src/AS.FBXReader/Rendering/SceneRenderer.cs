@@ -359,17 +359,39 @@ public sealed class SceneRenderer : IDisposable
             return Array.Empty<Vector3>();
 
         var boneMatrices = mesh.HasBones
-            ? _player.GetBoneMatrices(node, mesh, part.RebuildBindPose)
+            ? _player.GetBoneMatrices(node, mesh, part.RebuildBindPose || part.PreserveShape)
             : Array.Empty<Matrix4>();
+        // SpriteSkin files can have a clean mesh/UV layout but bone weights
+        // that pull interior vertices away from their surrounding triangles.
+        // Keep the source shape intact and follow its strongest bone as a
+        // single rigid piece, instead of making the part static.
+        var rigidBone = -1;
+        if (part.PreserveShape && mesh.HasBones && mesh.BoneCount > 0)
+        {
+            var maxWeight = 0f;
+            for (var b = 0; b < mesh.BoneCount; b++)
+            {
+                var weight = mesh.Bones[b].VertexWeights.Sum(vw => vw.Weight);
+                if (weight > maxWeight)
+                {
+                    maxWeight = weight;
+                    rigidBone = b;
+                }
+            }
+        }
         var positions = new Vector3[mesh.VertexCount];
-        var weightsByVertex = mesh.HasBones ? BuildWeights(mesh) : null;
+        var weightsByVertex = mesh.HasBones && !part.PreserveShape ? BuildWeights(mesh) : null;
         var meshGlobal = _player.GetGlobalTransform(node.Name);
 
         for (var i = 0; i < mesh.VertexCount; i++)
         {
             var p = MatrixUtil.ToOpenTk(mesh.Vertices[i]);
 
-            if (mesh.HasBones && weightsByVertex is not null)
+            if (rigidBone >= 0)
+            {
+                p = Vector3.TransformPosition(p, boneMatrices[rigidBone]);
+            }
+            else if (mesh.HasBones && weightsByVertex is not null)
             {
                 var skinned = Vector3.Zero;
                 var total = 0f;
