@@ -23,7 +23,9 @@ current code when resuming work in a later conversation.
 - Files: `MainForm.cs`, `ScenePart.cs`, `VisibilityProfile.cs`,
   `SceneRenderer.cs`, `README.md`, this changelog.
 - Verification: raw mesh/UV reconstruction and weight totals inspected;
-  Windows build and in-app `vamp_h` visual verification pending.
+  Windows/.NET 9 build succeeded:
+  https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37160254915.
+  In-app `vamp_h` visual verification is still pending.
 
 ## 0.1.12 — 2026-10-03
 
@@ -46,7 +48,10 @@ current code when resuming work in a later conversation.
   `VisibilityProfile.cs`, `SceneRenderer.cs`, `ViewerControl.cs`, `README.md`,
   this changelog.
 - Verification: raw FBX structure/weights inspected; `git diff --check`
-  passed. Windows preview/export visual confirmation is still needed.
+  passed; Windows/.NET 9 build succeeded:
+  https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37156884871.
+  The user confirmed that dragging the mouth into place worked; export visual
+  confirmation is still needed.
 
 ## 0.1.11 — 2026-09-28
 
