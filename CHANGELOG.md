@@ -19,9 +19,10 @@ current code when resuming work in a later conversation.
   cannot contain the space in the requested label "1.17.0 Final".
 - Files: `MeshDeformForm.cs`, `MainForm.cs`, `AS.FBXReader.csproj`, `README.md`,
   this changelog.
-- Verification: Windows/.NET 9 build and interactive vertex/camera checks
-  pending. The export cancellation path from 0.1.16 still needs an interactive
-  test; its Windows build passed.
+- Verification: Windows/.NET 9 build passed:
+  https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37218656974.
+  Interactive vertex/camera checks remain pending. The export cancellation
+  path from 0.1.16 still needs an interactive test; its Windows build passed.
 
 ## 0.1.16 — 2026-10-04
 
