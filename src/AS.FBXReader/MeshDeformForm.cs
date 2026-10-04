@@ -425,11 +425,11 @@ public sealed class MeshDeformForm : Form
             {
                 var snapshot = CopyOffsets();
                 var positions = CurrentPositions();
-                var center = positions[index];
+                var clickedPoint = positions[index];
                 var removed = false;
                 for (var i = 0; i < positions.Length; i++)
                 {
-                    if (Distance(positions[i], center) < 0.0001f)
+                    if (Distance(positions[i], clickedPoint) < 0.0001f)
                         removed |= _part.VertexOffsets.Remove(i);
                 }
                 if (removed)
