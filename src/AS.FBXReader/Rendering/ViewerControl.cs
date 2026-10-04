@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using OpenTK.GLControl;
 using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
@@ -30,6 +31,7 @@ public sealed class ViewerControl : UserControl
     public event EventHandler<ScenePart>? PartMoved;
     public event EventHandler<FramingState>? CameraChanged;
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool FreeCameraEnabled
     {
         get => _freeCameraEnabled;
@@ -146,14 +148,14 @@ public sealed class ViewerControl : UserControl
             if (_cameraDragging && _cameraStart != null &&
                 (e.Button & MouseButtons.Left) != 0)
             {
-                var dx = e.X - _cameraDragStart.X;
-                var dy = e.Y - _cameraDragStart.Y;
-                if (dx != 0 || dy != 0)
+                var panX = e.X - _cameraDragStart.X;
+                var panY = e.Y - _cameraDragStart.Y;
+                if (panX != 0 || panY != 0)
                 {
                     var zoom = Math.Max(0.1f, _cameraStart.Zoom);
                     _renderer.SetFramingTransform(zoom,
-                        _cameraStart.OffsetX + 2f * dx / Math.Max(1, _gl.ClientSize.Width) / zoom,
-                        _cameraStart.OffsetY - 2f * dy / Math.Max(1, _gl.ClientSize.Height) / zoom);
+                        _cameraStart.OffsetX + 2f * panX / Math.Max(1, _gl.ClientSize.Width) / zoom,
+                        _cameraStart.OffsetY - 2f * panY / Math.Max(1, _gl.ClientSize.Height) / zoom);
                     CameraChanged?.Invoke(this, _renderer.GetFraming());
                     _gl.Invalidate();
                     _dragged = true;

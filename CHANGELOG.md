@@ -19,8 +19,10 @@ current code when resuming work in a later conversation.
   is rejected. The exporter's radio options stack vertically to stay readable.
 - Files: `UiLayout.cs`, `MainForm.cs`, `MeshDeformForm.cs`, `ViewerControl.cs`,
   `ExportDialog.cs`, `README.md`, this changelog.
-- Verification for these new changes: pending Windows CI build and in-app
-  visual check at 4K/250% scaling. Keep the app version at 0.1.16 until the
+- Verification for these new changes: the first Windows CI build identified
+  a WinForms serialization annotation and two local-name conflicts in the
+  camera control; these were corrected. A second build and in-app visual
+  check at 4K/250% scaling are pending. Keep the app version at 0.1.16 until the
   interface and behavior are confirmed before calling it 0.2.0.
 - Fixed clipped text and buttons at large Windows text/DPI scaling. The mesh
   shape editor's top and bottom bars and the main toolbar now size to their
