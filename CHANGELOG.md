@@ -6,6 +6,21 @@ current code when resuming work in a later conversation.
 
 ## 0.1.16 — 2026-10-04
 
+- Export responsiveness: OpenGL frame readback stays on the UI thread, while
+  pixel conversion, PNG compression and cleanup now run asynchronously so
+  the window can process input. The progress/actions footer stays visible
+  below the scrollable settings, with an enabled Cancel export button only
+  while a job runs. Export settings are locked during a job and restored after.
+- Cancel stops after the current frame save or terminates FFmpeg during encode,
+  then removes the temporary frame folder. FFmpeg writes to a temporary file
+  beside the destination and replaces the final output only after successful
+  encoding; previously completed takes in a batch remain intact. Closing the
+  window during export requests cancellation. Reduced FFmpeg's verbose logs.
+- Files: `AnimationExporter.cs`, `ViewerControl.cs`, `ExportDialog.cs`,
+  `README.md`, this changelog.
+- Verification for this export update: pending Windows/.NET 9 build and user
+  interaction check. The synchronous OpenGL capture of a single very large
+  frame can still take time; cancellation is checked between frames.
 - In progress toward 0.2.0: the main window, export dialog and mesh editor
   open maximized. Main parts and export settings sidebars start at one fifth
   of the window width after layout and remain draggable; they no longer start

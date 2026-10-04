@@ -32,6 +32,11 @@ border marks the output frame. **Fit current pose** resets that framing.
 The export scope offers **Only this take**, **All takes**, or **Selected takes**.
 The last option reveals a checked list of takes to export. All/selected takes
 write separate files to the chosen folder; a single take uses a file path.
+The export controls and progress remain visible at the bottom of the settings
+panel. **Cancel export** stops after the current frame save, or terminates
+FFmpeg if it is encoding. A canceled take leaves no partial final file; takes
+already completed in a batch remain in the output folder. Settings can be
+changed again after the job stops.
 
 ## Visibility during an animation
 

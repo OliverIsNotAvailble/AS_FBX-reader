@@ -31,9 +31,13 @@ public sealed class ExportDialog : Form
     private readonly TrackBar _timeline = new();
     private readonly ProgressBar _progress = new();
     private readonly Label _status = new();
+    private readonly Button _exportButton = new();
+    private readonly Button _cancelButton = new();
     private readonly Panel _previewHost = new();
     private readonly Panel _previewFrame = new();
     private SplitContainer _root = null!;
+    private Panel _settingsScroll = null!;
+    private CancellationTokenSource? _exportCancellation;
 
     private Color _backgroundColor = Color.Black;
     private readonly int _originalAnimationIndex;
@@ -90,6 +94,7 @@ public sealed class ExportDialog : Form
             if (_exporting)
             {
                 e.Cancel = true;
+                CancelExport();
                 return;
             }
 
@@ -112,6 +117,7 @@ public sealed class ExportDialog : Form
             AutoScroll = true,
             Padding = new Padding(12)
         };
+        _settingsScroll = settingsScroll;
 
         var settings = new TableLayoutPanel
         {
@@ -288,36 +294,55 @@ public sealed class ExportDialog : Form
         settings.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         settings.RowCount++;
 
-        var exportButton = ActionButton("EXPORT", async (_, _) => await ExportAsync());
-        exportButton.MinimumSize = new Size(84, 46);
-        exportButton.Font = new Font(Font, FontStyle.Bold);
-        settings.Controls.Add(exportButton, 0, settings.RowCount);
-        settings.SetColumnSpan(exportButton, 2);
-        settings.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        settings.RowCount++;
+        var footer = new TableLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            RowCount = 3,
+            Padding = new Padding(12, 8, 12, 10)
+        };
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        footer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        footer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        footer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        _exportButton.Text = "EXPORT";
+        _exportButton.Font = new Font(Font, FontStyle.Bold);
+        _exportButton.Dock = DockStyle.Fill;
+        _exportButton.AutoSize = true;
+        _exportButton.MinimumSize = new Size(84, 46);
+        _exportButton.Click += async (_, _) => await ExportAsync();
+
+        _cancelButton.Text = "Cancel export";
+        _cancelButton.Dock = DockStyle.Fill;
+        _cancelButton.AutoSize = true;
+        _cancelButton.MinimumSize = new Size(84, 46);
+        _cancelButton.Enabled = false;
+        _cancelButton.Click += (_, _) => CancelExport();
+        footer.Controls.Add(_exportButton, 0, 0);
+        footer.Controls.Add(_cancelButton, 1, 0);
 
         _progress.Dock = DockStyle.Fill;
         _progress.Minimum = 0;
         _progress.Maximum = 100;
-        settings.Controls.Add(_progress, 0, settings.RowCount);
-        settings.SetColumnSpan(_progress, 2);
         _progress.MinimumSize = new Size(0, 24);
-        settings.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        settings.RowCount++;
+        footer.Controls.Add(_progress, 0, 1);
+        footer.SetColumnSpan(_progress, 2);
 
         _status.Text = "Adjust crop, then export.";
         _status.AutoSize = true;
-        settingsScroll.Resize += (_, _) =>
+        footer.Resize += (_, _) =>
             _status.MaximumSize = new Size(
-                Math.Max(180, settingsScroll.ClientSize.Width - settingsScroll.Padding.Horizontal -
-                    SystemInformation.VerticalScrollBarWidth), 0);
-        settings.Controls.Add(_status, 0, settings.RowCount);
-        settings.SetColumnSpan(_status, 2);
-        settings.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        settings.RowCount++;
+                Math.Max(180, footer.ClientSize.Width - footer.Padding.Horizontal), 0);
+        footer.Controls.Add(_status, 0, 2);
+        footer.SetColumnSpan(_status, 2);
 
         settingsScroll.Controls.Add(settings);
         root.Panel1.Controls.Add(settingsScroll);
+        root.Panel1.Controls.Add(footer);
 
         _previewHost.Dock = DockStyle.Fill;
         _previewHost.BackColor = Color.FromArgb(15, 15, 15);
@@ -711,6 +736,9 @@ public sealed class ExportDialog : Form
 
     private async Task ExportAsync()
     {
+        if (_exporting)
+            return;
+
         if (_session.Scene is null ||
             _animation.SelectedItem is not AnimationTake selected)
         {
@@ -749,14 +777,24 @@ public sealed class ExportDialog : Form
         var restoreAnimation = _player.AnimationIndex;
         var restoreTime = _player.TimeSeconds;
         var restorePlaying = _player.Playing;
+        var restoreFreeCamera = _preview.FreeCameraEnabled;
 
+        using var cancellation = new CancellationTokenSource();
+        _exportCancellation = cancellation;
         _exporting = true;
         _player.Playing = false;
-        UseWaitCursor = true;
+        _preview.FreeCameraEnabled = false;
+        _settingsScroll.Enabled = false;
+        _exportButton.Enabled = false;
+        _cancelButton.Enabled = true;
         _progress.Value = 0;
+        _status.Text = "Starting export...";
 
         try
         {
+            // Let WinForms paint the locked settings and Cancel button first.
+            await Task.Yield();
+            cancellation.Token.ThrowIfCancellationRequested();
             if (settings.ExportAllAnimations)
                 Directory.CreateDirectory(settings.OutputPath);
             else
@@ -766,6 +804,7 @@ public sealed class ExportDialog : Form
 
             for (var takeIndex = 0; takeIndex < takes.Count; takeIndex++)
             {
+                cancellation.Token.ThrowIfCancellationRequested();
                 var take = takes[takeIndex];
 
                 _player.SelectAnimation(take.Index);
@@ -782,6 +821,9 @@ public sealed class ExportDialog : Form
                     var localTakeIndex = takeIndex;
                     var progress = new Progress<int>(p =>
                     {
+                        if (!_exporting || cancellation.IsCancellationRequested)
+                            return;
+
                         var overall =
                             (localTakeIndex * 100 + p) /
                             Math.Max(1, takes.Count);
@@ -798,7 +840,10 @@ public sealed class ExportDialog : Form
                         settings.Width,
                         settings.Height,
                         settings.Fps,
-                        progress);
+                        progress,
+                        cancellation.Token);
+
+                    cancellation.Token.ThrowIfCancellationRequested();
 
                     var outputPath = settings.ExportAllAnimations
                         ? Path.Combine(
@@ -814,14 +859,18 @@ public sealed class ExportDialog : Form
                     await exporter.EncodeWithFfmpegAsync(
                         temp,
                         outputPath,
-                        settings);
+                        settings,
+                        cancellation.Token);
                 }
                 finally
                 {
                     try
                     {
-                        if (Directory.Exists(temp))
-                            Directory.Delete(temp, true);
+                        await Task.Run(() =>
+                        {
+                            if (Directory.Exists(temp))
+                                Directory.Delete(temp, true);
+                        });
                     }
                     catch
                     {
@@ -840,6 +889,10 @@ public sealed class ExportDialog : Form
                     ? $"Exported {takes.Count} animations to:\r\n{settings.OutputPath}"
                     : $"Exported:\r\n{EnsureExtension(settings.OutputPath, settings.Extension)}",
                 "Export complete");
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            _status.Text = "Export canceled. Any completed takes remain in the output folder.";
         }
         catch (Exception ex)
         {
@@ -862,9 +915,23 @@ public sealed class ExportDialog : Form
             _player.Playing = restorePlaying;
             _preview.InvalidateScene();
 
-            UseWaitCursor = false;
             _exporting = false;
+            _exportCancellation = null;
+            _settingsScroll.Enabled = true;
+            _exportButton.Enabled = true;
+            _cancelButton.Enabled = false;
+            _preview.FreeCameraEnabled = restoreFreeCamera;
         }
+    }
+
+    private void CancelExport()
+    {
+        if (!_exporting || _exportCancellation?.IsCancellationRequested != false)
+            return;
+
+        _cancelButton.Enabled = false;
+        _status.Text = "Canceling export...";
+        _exportCancellation.Cancel();
     }
 
     private void RestorePlayer()

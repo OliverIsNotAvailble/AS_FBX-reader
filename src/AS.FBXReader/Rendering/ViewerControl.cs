@@ -7,6 +7,8 @@ using AS.FBXReader.Models;
 
 namespace AS.FBXReader.Rendering;
 
+public readonly record struct CapturedFrame(int Width, int Height, bool Transparent, byte[] Pixels);
+
 public sealed class ViewerControl : UserControl
 {
     private readonly GLControl _gl;
@@ -317,6 +319,11 @@ public sealed class ViewerControl : UserControl
         => _renderer.GetPartWorldPositions(part);
 
     public Bitmap CaptureFrame(int width, int height)
+        => CreateBitmap(CaptureFramePixels(width, height));
+
+    // Only the OpenGL readback happens on the UI thread. Pixel conversion and
+    // PNG compression can then run on a worker without touching the GL context.
+    public CapturedFrame CaptureFramePixels(int width, int height)
     {
         if (!_gl.HasValidContext)
             throw new InvalidOperationException("OpenGL context is not ready.");
@@ -389,31 +396,7 @@ public sealed class ViewerControl : UserControl
                 PixelType.UnsignedByte,
                 bytes);
 
-            // OpenGL compositing buffers store premultiplied RGB when alpha is
-            // present. PNG/WebP expect straight-alpha pixels.
-            if (_renderer.TransparentBackground)
-                UnpremultiplyBgra(bytes);
-
-            var bitmap = new Bitmap(
-                width,
-                height,
-                System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-
-            var rect = new Rectangle(0, 0, width, height);
-            var bits = bitmap.LockBits(
-                rect,
-                System.Drawing.Imaging.ImageLockMode.WriteOnly,
-                bitmap.PixelFormat);
-
-            System.Runtime.InteropServices.Marshal.Copy(
-                bytes,
-                0,
-                bits.Scan0,
-                bytes.Length);
-
-            bitmap.UnlockBits(bits);
-            bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
-            return bitmap;
+            return new CapturedFrame(width, height, _renderer.TransparentBackground, bytes);
         }
         finally
         {
@@ -430,6 +413,49 @@ public sealed class ViewerControl : UserControl
                 0,
                 Math.Max(1, _gl.ClientSize.Width),
                 Math.Max(1, _gl.ClientSize.Height));
+        }
+    }
+
+    public static void SavePngFrame(CapturedFrame frame, string path)
+    {
+        using var bitmap = CreateBitmap(frame);
+        bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+    }
+
+    private static Bitmap CreateBitmap(CapturedFrame frame)
+    {
+        // OpenGL compositing buffers store premultiplied RGB when alpha is
+        // present. PNG/WebP expect straight-alpha pixels.
+        if (frame.Transparent)
+            UnpremultiplyBgra(frame.Pixels);
+
+        var bitmap = new Bitmap(
+            frame.Width,
+            frame.Height,
+            System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+        try
+        {
+            var rect = new Rectangle(0, 0, frame.Width, frame.Height);
+            var bits = bitmap.LockBits(rect,
+                System.Drawing.Imaging.ImageLockMode.WriteOnly,
+                bitmap.PixelFormat);
+            try
+            {
+                System.Runtime.InteropServices.Marshal.Copy(
+                    frame.Pixels, 0, bits.Scan0, frame.Pixels.Length);
+            }
+            finally
+            {
+                bitmap.UnlockBits(bits);
+            }
+            bitmap.RotateFlip(RotateFlipType.RotateNoneFlipY);
+            return bitmap;
+        }
+        catch
+        {
+            bitmap.Dispose();
+            throw;
         }
     }
 

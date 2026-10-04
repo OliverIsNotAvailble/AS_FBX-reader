@@ -30,10 +30,14 @@ public sealed class AnimationExporter
 
                 player.SetTime(frame / (double)fps);
 
-                using var bitmap = viewer.CaptureFrame(width, height);
-                bitmap.Save(
-                    Path.Combine(outputFolder, $"frame_{frame:000000}.png"),
-                    System.Drawing.Imaging.ImageFormat.Png);
+                // The GL readback stays on the UI thread. Conversion, flipping
+                // and PNG compression run off-thread so Cancel stays usable.
+                var pixels = viewer.CaptureFramePixels(width, height);
+                var framePath = Path.Combine(outputFolder, $"frame_{frame:000000}.png");
+                await Task.Run(() => ViewerControl.SavePngFrame(pixels, framePath),
+                    cancellationToken);
+
+                cancellationToken.ThrowIfCancellationRequested();
 
                 progress?.Report((frame + 1) * 100 / frames);
                 await Task.Yield();
@@ -51,35 +55,74 @@ public sealed class AnimationExporter
         ExportSettings settings,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var input = Path.Combine(framesFolder, "frame_%06d.png");
-        var args = BuildFfmpegArguments(input, outputPath, settings);
+        // Encode beside the destination, then replace it only after success.
+        // Canceling never leaves a broken file with the final filename.
+        var stagingPath = Path.Combine(
+            Path.GetDirectoryName(outputPath)!,
+            $".{Path.GetFileNameWithoutExtension(outputPath)}.{Guid.NewGuid():N}.partial{Path.GetExtension(outputPath)}");
+        var args = BuildFfmpegArguments(input, stagingPath, settings);
 
         var psi = new System.Diagnostics.ProcessStartInfo
         {
             FileName = "ffmpeg",
-            Arguments = args,
+            Arguments = "-hide_banner -loglevel error -nostats " + args,
             UseShellExecute = false,
             RedirectStandardError = true,
             RedirectStandardOutput = true,
             CreateNoWindow = true
         };
 
-        using var process = System.Diagnostics.Process.Start(psi)
-            ?? throw new InvalidOperationException(
-                "Could not start ffmpeg. Make sure ffmpeg is in PATH.");
-
-        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-
-        await process.WaitForExitAsync(cancellationToken);
-
-        var stderr = await stderrTask;
-        _ = await stdoutTask;
-
-        if (process.ExitCode != 0)
+        try
         {
-            throw new InvalidOperationException(
-                $"ffmpeg failed ({process.ExitCode}):\r\n{stderr}");
+            using var process = System.Diagnostics.Process.Start(psi)
+                ?? throw new InvalidOperationException(
+                    "Could not start ffmpeg. Make sure ffmpeg is in PATH.");
+
+            using var cancellation = cancellationToken.Register(() =>
+            {
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill(entireProcessTree: true);
+                }
+                catch (Exception) { /* Process may have exited during cancellation. */ }
+            });
+
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+
+            try
+            {
+                await process.WaitForExitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException) { /* Already exited. */ }
+                await process.WaitForExitAsync();
+                throw;
+            }
+
+            var stderr = await stderrTask;
+            _ = await stdoutTask;
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException(
+                    $"ffmpeg failed ({process.ExitCode}):\r\n{stderr}");
+
+            File.Move(stagingPath, outputPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(stagingPath))
+                File.Delete(stagingPath);
         }
     }
 
