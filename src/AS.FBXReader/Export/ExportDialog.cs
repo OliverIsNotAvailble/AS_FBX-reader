@@ -328,6 +328,7 @@ public sealed class ExportDialog : Form
         _progress.Dock = DockStyle.Fill;
         _progress.Minimum = 0;
         _progress.Maximum = 100;
+        _progress.MarqueeAnimationSpeed = 30;
         _progress.MinimumSize = new Size(0, 24);
         footer.Controls.Add(_progress, 0, 1);
         footer.SetColumnSpan(_progress, 2);
@@ -819,9 +820,10 @@ public sealed class ExportDialog : Form
                 try
                 {
                     var localTakeIndex = takeIndex;
+                    var rendering = true;
                     var progress = new Progress<int>(p =>
                     {
-                        if (!_exporting || cancellation.IsCancellationRequested)
+                        if (!_exporting || !rendering || cancellation.IsCancellationRequested)
                             return;
 
                         var overall =
@@ -843,6 +845,7 @@ public sealed class ExportDialog : Form
                         progress,
                         cancellation.Token);
 
+                    rendering = false;
                     cancellation.Token.ThrowIfCancellationRequested();
 
                     var outputPath = settings.ExportAllAnimations
@@ -855,12 +858,19 @@ public sealed class ExportDialog : Form
 
                     _status.Text =
                         $"Encoding {Path.GetFileName(outputPath)}...";
-
-                    await exporter.EncodeWithFfmpegAsync(
-                        temp,
-                        outputPath,
-                        settings,
-                        cancellation.Token);
+                    _progress.Style = ProgressBarStyle.Marquee;
+                    try
+                    {
+                        await exporter.EncodeWithFfmpegAsync(
+                            temp,
+                            outputPath,
+                            settings,
+                            cancellation.Token);
+                    }
+                    finally
+                    {
+                        _progress.Style = ProgressBarStyle.Blocks;
+                    }
                 }
                 finally
                 {

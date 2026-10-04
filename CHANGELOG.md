@@ -11,6 +11,8 @@ current code when resuming work in a later conversation.
   the window can process input. The progress/actions footer stays visible
   below the scrollable settings, with an enabled Cancel export button only
   while a job runs. Export settings are locked during a job and restored after.
+  The progress bar animates during FFmpeg encoding rather than sitting at a
+  misleading completed percentage.
 - Cancel stops after the current frame save or terminates FFmpeg during encode,
   then removes the temporary frame folder. FFmpeg writes to a temporary file
   beside the destination and replaces the final output only after successful
@@ -20,6 +22,7 @@ current code when resuming work in a later conversation.
   `README.md`, this changelog.
 - Verification for this export update: Windows/.NET 9 build passed:
   https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37214360627.
+  The final animated encoding progress change still needs a build.
   Interactive export/cancel checks remain pending. The synchronous OpenGL
   capture of a single very large frame can still take time; cancellation is
   checked between frames.
