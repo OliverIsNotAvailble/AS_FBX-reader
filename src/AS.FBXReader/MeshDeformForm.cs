@@ -33,7 +33,7 @@ public sealed class MeshDeformForm : Form
 
         _hint = new Label
         {
-            Text = "Drag a vertex. Increase radius to bend its neighbors smoothly. Right-click a vertex to reset it.",
+            Text = "Drag a vertex; Ctrl+click selects several. Right-click a selected vertex to reset the group.",
             AutoSize = true,
             Anchor = AnchorStyles.Left
         };
@@ -41,8 +41,10 @@ public sealed class MeshDeformForm : Form
         _canvas = new MeshCanvas(part, mesh, texturePath, worldPositions, () =>
         {
             previewChanged();
-            _hint.Text = $"Vertex {(_canvas?.SelectedVertex ?? -1) + 1}/{mesh.VertexCount}  |  edits: {_part.VertexOffsets.Count}  |  Save profile after Apply";
+            _hint.Text = $"Selected: {_canvas?.SelectionCount ?? 0}/{mesh.VertexCount}  |  edits: {_part.VertexOffsets.Count}  |  Save profile after Apply";
         }, beforeEdit => _undo.Push(beforeEdit)) { Dock = DockStyle.Fill };
+        _canvas.SelectionChanged += count =>
+            _hint.Text = $"Selected: {count}/{mesh.VertexCount}  |  Ctrl+click to add/remove points; drag to move together.";
 
         var toolbar = new FlowLayoutPanel
         {
@@ -70,6 +72,23 @@ public sealed class MeshDeformForm : Form
             Padding = new Padding(0, 5, 0, 0)
         });
         toolbar.Controls.Add(radius);
+        var freeCamera = new CheckBox
+        {
+            Text = "Free camera",
+            AutoSize = true,
+            Padding = new Padding(8, 5, 6, 0)
+        };
+        freeCamera.CheckedChanged += (_, _) =>
+        {
+            _canvas.FreeCameraEnabled = freeCamera.Checked;
+            _hint.Text = freeCamera.Checked
+                ? "Free camera: wheel to zoom, drag to pan. Uncheck to edit vertices."
+                : "Ctrl+click points to select several; drag one selected point to move the group.";
+        };
+        toolbar.Controls.Add(freeCamera);
+        var fitView = new Button { Text = "Fit view", AutoSize = true };
+        fitView.Click += (_, _) => _canvas.FitView();
+        toolbar.Controls.Add(fitView);
         var undo = new Button { Text = "Undo", AutoSize = true };
         undo.Click += (_, _) =>
         {
@@ -165,10 +184,47 @@ public sealed class MeshDeformForm : Form
         private PointF[]? _basisX, _basisY;
         private Dictionary<int, VertexOffset>? _dragSnapshot;
         private bool _dragged;
+        private readonly HashSet<int> _selectedVertices = new();
+        private bool _freeCameraEnabled;
+        private bool _cameraDragging;
+        private Point _cameraDragStart;
+        private PointF _cameraPanStart;
+        private PointF _cameraPan;
+        private float _cameraZoom = 1f;
 
         public int SelectedVertex { get; private set; } = -1;
+        public int SelectionCount => _selectedVertices.Count;
+        public event Action<int>? SelectionChanged;
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool FreeCameraEnabled
+        {
+            get => _freeCameraEnabled;
+            set
+            {
+                _freeCameraEnabled = value;
+                _cameraDragging = false;
+                if (value && _dragVertex >= 0)
+                {
+                    if (_dragged && _dragSnapshot is not null)
+                        _beforeEdit(_dragSnapshot);
+                    _dragVertex = -1;
+                    _dragSnapshot = null;
+                    _startX = _startY = _falloff = null;
+                    _basisX = _basisY = null;
+                }
+                Capture = false;
+                Cursor = value ? Cursors.Hand : Cursors.Default;
+            }
+        }
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public float BrushRadius { get; set; }
+
+        public void FitView()
+        {
+            _cameraZoom = 1f;
+            _cameraPan = PointF.Empty;
+            Invalidate();
+        }
 
         public MeshCanvas(ScenePart part, Mesh mesh, string texturePath,
             Func<PointF[]> worldPositions, Action changed,
@@ -185,6 +241,8 @@ public sealed class MeshDeformForm : Form
             _sourceUv = new PointF[_reference.Length];
             DoubleBuffered = true;
             ResizeRedraw = true;
+            SetStyle(ControlStyles.Selectable, true);
+            TabStop = true;
             BackColor = Color.FromArgb(28, 28, 28);
 
             var minX = _reference.Min(p => p.X);
@@ -222,15 +280,23 @@ public sealed class MeshDeformForm : Form
 
         public void NotifyPreview() => _changed();
 
-        private float ViewScale => Math.Max(0.001f,
+        private float ViewScale => _cameraZoom * Math.Max(0.001f,
             Math.Min((ClientSize.Width - 30f) / _spanX,
                      (ClientSize.Height - 30f) / _spanY));
 
         private PointF WorldToScreen(PointF p)
         {
             var s = ViewScale;
-            return new PointF((ClientSize.Width - _spanX * s) / 2f + (p.X - _minX) * s,
-                (ClientSize.Height - _spanY * s) / 2f + (_maxY - p.Y) * s);
+            return new PointF((ClientSize.Width - _spanX * s) / 2f + (p.X - _minX) * s + _cameraPan.X,
+                (ClientSize.Height - _spanY * s) / 2f + (_maxY - p.Y) * s + _cameraPan.Y);
+        }
+
+        private PointF ScreenToWorld(Point p)
+        {
+            var s = ViewScale;
+            return new PointF(
+                _minX + (p.X - _cameraPan.X - (ClientSize.Width - _spanX * s) / 2f) / s,
+                _maxY - (p.Y - _cameraPan.Y - (ClientSize.Height - _spanY * s) / 2f) / s);
         }
 
         private PointF[] CurrentPositions() => _worldPositions();
@@ -284,8 +350,9 @@ public sealed class MeshDeformForm : Form
             for (var i = 0; i < points.Length; i++)
             {
                 var p = points[i];
-                var radius = i == SelectedVertex ? 6f : 4f;
-                g.FillEllipse(i == SelectedVertex ? selected : handle,
+                var isSelected = _selectedVertices.Contains(i);
+                var radius = isSelected ? 6f : 4f;
+                g.FillEllipse(isSelected ? selected : handle,
                     p.X - radius, p.Y - radius, radius * 2, radius * 2);
                 g.DrawEllipse(outline, p.X - radius, p.Y - radius, radius * 2, radius * 2);
             }
@@ -427,21 +494,62 @@ public sealed class MeshDeformForm : Form
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
+            Focus();
+            if (_freeCameraEnabled)
+            {
+                if (e.Button == MouseButtons.Left)
+                {
+                    _cameraDragging = true;
+                    _cameraDragStart = e.Location;
+                    _cameraPanStart = _cameraPan;
+                    Cursor = Cursors.SizeAll;
+                    Capture = true;
+                }
+                return;
+            }
+
             var index = HitVertex(e.Location);
             if (index < 0)
+            {
+                if (e.Button == MouseButtons.Left && (ModifierKeys & Keys.Control) == 0)
+                {
+                    _selectedVertices.Clear();
+                    SelectedVertex = -1;
+                    SelectionChanged?.Invoke(0);
+                    Invalidate();
+                }
                 return;
+            }
+
+            if (e.Button == MouseButtons.Left && (ModifierKeys & Keys.Control) != 0)
+            {
+                if (!_selectedVertices.Add(index))
+                    _selectedVertices.Remove(index);
+                SelectedVertex = _selectedVertices.Count == 0 ? -1 :
+                    _selectedVertices.Contains(index) ? index : _selectedVertices.First();
+                SelectionChanged?.Invoke(_selectedVertices.Count);
+                Invalidate();
+                return;
+            }
+
+            if (!_selectedVertices.Contains(index))
+            {
+                _selectedVertices.Clear();
+                _selectedVertices.Add(index);
+            }
             SelectedVertex = index;
+            SelectionChanged?.Invoke(_selectedVertices.Count);
             Invalidate();
 
             if (e.Button == MouseButtons.Right)
             {
                 var snapshot = CopyOffsets();
                 var positions = CurrentPositions();
-                var clickedPoint = positions[index];
+                var selectedPoints = _selectedVertices.Select(i => positions[i]).ToArray();
                 var removed = false;
                 for (var i = 0; i < positions.Length; i++)
                 {
-                    if (Distance(positions[i], clickedPoint) < 0.0001f)
+                    if (selectedPoints.Any(p => Distance(positions[i], p) < 0.0001f))
                         removed |= _part.VertexOffsets.Remove(i);
                 }
                 if (removed)
@@ -465,13 +573,13 @@ public sealed class MeshDeformForm : Form
             _falloff = new float[positionsAtStart.Length];
             _basisX = new PointF[positionsAtStart.Length];
             _basisY = new PointF[positionsAtStart.Length];
-            var center = positionsAtStart[index];
+            var centers = _selectedVertices.Select(i => positionsAtStart[i]).ToArray();
             for (var i = 0; i < positionsAtStart.Length; i++)
             {
                 _startX[i] = _part.VertexOffsets.TryGetValue(i, out var edit) ? edit.X : 0f;
                 _startY[i] = edit?.Y ?? 0f;
-                var distance = Distance(positionsAtStart[i], center);
-                var influence = BrushRadius > 0f
+                var distance = centers.Min(center => Distance(positionsAtStart[i], center));
+                var influence = _selectedVertices.Contains(i) ? 1f : BrushRadius > 0f
                     ? Math.Clamp(1f - distance / BrushRadius, 0f, 1f)
                     : distance < 0.0001f ? 1f : 0f;
                 _falloff[i] = influence * influence;
@@ -499,6 +607,15 @@ public sealed class MeshDeformForm : Form
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
+            if (_cameraDragging)
+            {
+                _cameraPan = new PointF(
+                    _cameraPanStart.X + e.X - _cameraDragStart.X,
+                    _cameraPanStart.Y + e.Y - _cameraDragStart.Y);
+                Invalidate();
+                return;
+            }
+
             if (_dragVertex < 0 || _startX is null || _startY is null ||
                 _falloff is null || _basisX is null || _basisY is null)
                 return;
@@ -528,6 +645,14 @@ public sealed class MeshDeformForm : Form
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
+            if (e.Button == MouseButtons.Left && _cameraDragging)
+            {
+                _cameraDragging = false;
+                Capture = false;
+                Cursor = Cursors.Hand;
+                return;
+            }
+
             if (e.Button != MouseButtons.Left || _dragVertex < 0)
                 return;
             if (_dragged && _dragSnapshot is not null)
@@ -537,6 +662,29 @@ public sealed class MeshDeformForm : Form
             _startX = _startY = _falloff = null;
             _basisX = _basisY = null;
             Capture = false;
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            base.OnMouseEnter(e);
+            if (_freeCameraEnabled)
+                Focus();
+        }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            base.OnMouseWheel(e);
+            if (!_freeCameraEnabled || e.Delta == 0)
+                return;
+
+            var anchor = ScreenToWorld(e.Location);
+            _cameraZoom = Math.Clamp(
+                _cameraZoom * (float)Math.Pow(1.12, e.Delta / 120.0), 0.1f, 10f);
+            var shifted = WorldToScreen(anchor);
+            _cameraPan = new PointF(
+                _cameraPan.X + e.X - shifted.X,
+                _cameraPan.Y + e.Y - shifted.Y);
+            Invalidate();
         }
 
         private static float Distance(PointF a, PointF b)

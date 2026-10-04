@@ -1,5 +1,7 @@
 # AS_FBX-reader
 
+Current version: **0.2.0**.
+
 Small Windows tool for FBX files exported by the custom AssetStudio/AS19 patch.
 
 The goal is deliberately **not** to become Blender. The app is meant to do four things well:
@@ -91,8 +93,13 @@ their existing skinning.
 For hand edits, right-click a part and open **Edit mesh shape...**. The editor
 shows its texture, the original triangles and draggable vertex handles over
 a grid. **Neighbor radius** bends nearby vertices along with the selected
-one; zero moves one vertex. Right-click a handle to reset it, use Undo/Reset
-shape for broader corrections, and Apply to keep the changes in the current
+one; zero moves one vertex. Ctrl+click several handles to select them, then
+drag any selected handle to move the group. The radius also affects their
+neighbors. Right-click a selected handle to reset the group. Enable **Free
+camera** in this editor to pan with left drag and zoom with the mouse wheel;
+**Fit view** restores the editor's view. Uncheck it to drag vertices again.
+Camera navigation changes only the editor view, never the saved mesh shape.
+Use Undo/Reset shape for broader corrections, and Apply to keep the changes in the current
 scene. The main preview updates while dragging. Save the profile to persist
 the vertex changes; Cancel restores the shape from before opening the editor.
 Edits change local vertex positions before skinning and are used by both

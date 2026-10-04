@@ -40,7 +40,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.1.16";
+        Text = "AS_FBX-reader 0.2.0";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);

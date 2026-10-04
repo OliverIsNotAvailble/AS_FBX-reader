@@ -4,6 +4,25 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## 0.2.0 — 2026-10-04
+
+- Closed the 0.1.x interface cycle after the user confirmed that the scaling
+  and controls are visible. The editor now has its own Free camera checkbox:
+  wheel zooms around the pointer, left drag pans, and Fit view restores the
+  original editor view. Camera movement never edits or saves vertex offsets.
+- Ctrl+click toggles multiple vertex handles. Dragging a selected handle moves
+  the whole selection, with optional neighbor-radius falloff around each
+  selected point; right-click a selected handle resets the group. Editing and
+  camera navigation remain separate modes.
+- Set the window title and assembly/package version to 0.2.0. `main` and the
+  `1.17.0-Final` branch point to the same release commit; Git branch names
+  cannot contain the space in the requested label "1.17.0 Final".
+- Files: `MeshDeformForm.cs`, `MainForm.cs`, `AS.FBXReader.csproj`, `README.md`,
+  this changelog.
+- Verification: Windows/.NET 9 build and interactive vertex/camera checks
+  pending. The export cancellation path from 0.1.16 still needs an interactive
+  test; its Windows build passed.
+
 ## 0.1.16 — 2026-10-04
 
 - Export responsiveness: OpenGL frame readback stays on the UI thread, while
@@ -44,9 +63,8 @@ current code when resuming work in a later conversation.
   a WinForms serialization annotation and two local-name conflicts in the
   camera control; these were corrected. The second Windows/.NET 9 build passed:
   https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37169425954.
-  In-app visual and interaction checks at 4K/250% scaling remain pending.
-  Keep the app version at 0.1.16 until the interface and behavior are confirmed
-  before calling it 0.2.0.
+  The user subsequently confirmed that interface scaling and control
+  visibility were working and asked to finalize 0.2.0.
 - Fixed clipped text and buttons at large Windows text/DPI scaling. The mesh
   shape editor's top and bottom bars and the main toolbar now size to their
   controls; the radius input reserves space for its value and spinner.
