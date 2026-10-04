@@ -17,8 +17,11 @@ current code when resuming work in a later conversation.
   ignored on load. The FBX on disk remains unchanged.
 - Files: `MeshDeformForm.cs`, `MainForm.cs`, `ScenePart.cs`,
   `VisibilityProfile.cs`, `SceneRenderer.cs`, `README.md`, this changelog.
-- Verification: `git diff --check` passed; Windows compilation and interactive
-  editor verification pending.
+- Verification: `git diff --check` passed. The first Windows build caught a
+  WinForms designer serialization requirement on the editor's radius property;
+  that was fixed and the subsequent Windows/.NET 9 build succeeded:
+  https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37163730093.
+  Interactive editor and visual texture mapping verification are pending.
 
 ## 0.1.13 — 2026-10-03
 
