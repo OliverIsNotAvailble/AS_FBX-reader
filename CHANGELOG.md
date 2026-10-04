@@ -22,7 +22,8 @@ current code when resuming work in a later conversation.
   `README.md`, this changelog.
 - Verification for this export update: Windows/.NET 9 build passed:
   https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37214360627.
-  The final animated encoding progress change still needs a build.
+  The final animated encoding progress change also passed:
+  https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37214537457.
   Interactive export/cancel checks remain pending. The synchronous OpenGL
   capture of a single very large frame can still take time; cancellation is
   checked between frames.
