@@ -4,6 +4,18 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## 0.1.16 — 2026-10-04
+
+- Fixed clipped text and buttons at large Windows text/DPI scaling. The mesh
+  shape editor's top and bottom bars and the main toolbar now size to their
+  controls; the radius input reserves space for its value and spinner.
+- The export button and progress rows now grow with their controls. The
+  rename dialog uses a layout instead of fixed positions, and the main
+  timeline/status use their preferred heights.
+- Files: `MeshDeformForm.cs`, `MainForm.cs`, `ExportDialog.cs`, this changelog.
+- Verification: `git diff --check` passed. Windows build and in-app visual
+  confirmation at the user's display scaling are pending.
+
 ## 0.1.15 — 2026-10-03
 
 - Fixed the mesh editor showing imported local coordinates while the main

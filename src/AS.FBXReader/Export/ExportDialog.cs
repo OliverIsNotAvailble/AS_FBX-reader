@@ -252,11 +252,11 @@ public sealed class ExportDialog : Form
         settings.RowCount++;
 
         var exportButton = ActionButton("EXPORT", async (_, _) => await ExportAsync());
-        exportButton.Height = 46;
+        exportButton.MinimumSize = new Size(84, 46);
         exportButton.Font = new Font(Font, FontStyle.Bold);
         settings.Controls.Add(exportButton, 0, settings.RowCount);
         settings.SetColumnSpan(exportButton, 2);
-        settings.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        settings.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         settings.RowCount++;
 
         _progress.Dock = DockStyle.Fill;
@@ -264,7 +264,8 @@ public sealed class ExportDialog : Form
         _progress.Maximum = 100;
         settings.Controls.Add(_progress, 0, settings.RowCount);
         settings.SetColumnSpan(_progress, 2);
-        settings.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        _progress.MinimumSize = new Size(0, 24);
+        settings.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         settings.RowCount++;
 
         _status.Text = "Adjust crop, then export.";

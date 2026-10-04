@@ -40,7 +40,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.1.15";
+        Text = "AS_FBX-reader 0.1.16";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -60,10 +60,10 @@ public sealed class MainForm : Form
         var toolbar = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 72,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(8, 9, 8, 7),
             WrapContents = false,
-            AutoSize = false,
             AutoScroll = true
         };
 
@@ -137,13 +137,13 @@ public sealed class MainForm : Form
         split.Panel2.Controls.Add(_viewer);
 
         _timeline.Dock = DockStyle.Bottom;
-        _timeline.Height = 44;
+        _timeline.AutoSize = true;
         _timeline.Minimum = 0;
         _timeline.Maximum = 1000;
         _timeline.TickStyle = TickStyle.None;
 
         _status.Dock = DockStyle.Bottom;
-        _status.Height = 30;
+        _status.AutoSize = true;
         _status.Padding = new Padding(6, 5, 0, 0);
         _status.Text = "Open an FBX exported by AssetStudio.";
 
@@ -1511,45 +1511,42 @@ public sealed class MainForm : Form
             Font = Font
         };
 
-        var label = new Label
+        var layout = new TableLayoutPanel
         {
-            Text = description,
-            AutoSize = false,
-            Left = 14,
-            Top = 14,
-            Width = 510,
-            Height = 32
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(14, 14, 14, 10)
         };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var input = new TextBox
+        var label = new Label { Text = description, AutoSize = true };
+        var input = new TextBox { Dock = DockStyle.Top, Text = currentValue };
+        var actions = new FlowLayoutPanel
         {
-            Left = 14,
-            Top = 52,
-            Width = 510,
-            Text = currentValue
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false
         };
-
         var ok = new Button
         {
-            Text = "OK",
-            DialogResult = DialogResult.OK,
-            Left = 350,
-            Top = 102,
-            Width = 82,
-            Height = 36
+            Text = "OK", DialogResult = DialogResult.OK,
+            AutoSize = true, MinimumSize = new Size(82, 0)
         };
-
         var cancel = new Button
         {
-            Text = "Cancel",
-            DialogResult = DialogResult.Cancel,
-            Left = 442,
-            Top = 102,
-            Width = 82,
-            Height = 36
+            Text = "Cancel", DialogResult = DialogResult.Cancel,
+            AutoSize = true, MinimumSize = new Size(82, 0)
         };
-
-        dialog.Controls.AddRange([label, input, ok, cancel]);
+        actions.Controls.Add(cancel);
+        actions.Controls.Add(ok);
+        layout.Controls.Add(label, 0, 0);
+        layout.Controls.Add(input, 0, 1);
+        layout.Controls.Add(actions, 0, 2);
+        dialog.Controls.Add(layout);
         dialog.AcceptButton = ok;
         dialog.CancelButton = cancel;
 

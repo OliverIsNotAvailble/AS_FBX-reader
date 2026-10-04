@@ -46,9 +46,11 @@ public sealed class MeshDeformForm : Form
         var toolbar = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 48,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             WrapContents = false,
-            Padding = new Padding(9, 7, 9, 3)
+            AutoScroll = true,
+            Padding = new Padding(9, 7, 9, 7)
         };
         var radius = new NumericUpDown
         {
@@ -56,7 +58,8 @@ public sealed class MeshDeformForm : Form
             Maximum = 100,
             DecimalPlaces = 2,
             Increment = 0.25m,
-            Width = 75,
+            Width = Math.Max(100, TextRenderer.MeasureText("100.00", Font).Width +
+                SystemInformation.VerticalScrollBarWidth + 20),
             Value = 0
         };
         radius.ValueChanged += (_, _) => _canvas.BrushRadius = (float)radius.Value;
@@ -88,9 +91,10 @@ public sealed class MeshDeformForm : Form
         var bottom = new TableLayoutPanel
         {
             Dock = DockStyle.Bottom,
-            Height = 54,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 2,
-            Padding = new Padding(10, 6, 10, 6)
+            Padding = new Padding(10, 8, 10, 8)
         };
         bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -100,8 +104,16 @@ public sealed class MeshDeformForm : Form
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false
         };
-        var apply = new Button { Text = "Apply", Width = 95, DialogResult = DialogResult.OK };
-        var cancel = new Button { Text = "Cancel", Width = 95, DialogResult = DialogResult.Cancel };
+        var apply = new Button
+        {
+            Text = "Apply", AutoSize = true, MinimumSize = new Size(95, 0),
+            Padding = new Padding(8, 4, 8, 4), DialogResult = DialogResult.OK
+        };
+        var cancel = new Button
+        {
+            Text = "Cancel", AutoSize = true, MinimumSize = new Size(95, 0),
+            Padding = new Padding(8, 4, 8, 4), DialogResult = DialogResult.Cancel
+        };
         actions.Controls.Add(apply);
         actions.Controls.Add(cancel);
         bottom.Controls.Add(_hint, 0, 0);
