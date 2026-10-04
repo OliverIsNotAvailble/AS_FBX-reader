@@ -22,6 +22,8 @@ public sealed class ExportDialog : Form
     private readonly Button _backgroundButton = new();
     private readonly RadioButton _currentAnimation = new();
     private readonly RadioButton _allAnimations = new();
+    private readonly RadioButton _selectedAnimations = new();
+    private readonly CheckedListBox _selectedTakes = new();
     private readonly TextBox _output = new();
     private readonly NumericUpDown _zoom = new();
     private readonly NumericUpDown _offsetX = new();
@@ -31,13 +33,16 @@ public sealed class ExportDialog : Form
     private readonly Label _status = new();
     private readonly Panel _previewHost = new();
     private readonly Panel _previewFrame = new();
+    private SplitContainer _root = null!;
 
     private Color _backgroundColor = Color.Black;
     private readonly int _originalAnimationIndex;
     private readonly double _originalTime;
     private readonly bool _originalPlaying;
     private bool _syncingResolution;
+    private bool _syncingCamera;
     private bool _exporting;
+    private bool BatchExport => _allAnimations.Checked || _selectedAnimations.Checked;
 
     public ExportDialog(
         FbxSession session,
@@ -57,6 +62,7 @@ public sealed class ExportDialog : Form
         Height = 900;
         MinimumSize = new Size(1050, 700);
         StartPosition = FormStartPosition.CenterParent;
+        WindowState = FormWindowState.Maximized;
         AutoScaleMode = AutoScaleMode.Font;
         Font = new Font("Segoe UI", 10.5F);
 
@@ -72,6 +78,7 @@ public sealed class ExportDialog : Form
 
         Shown += (_, _) =>
         {
+            BeginInvoke(new Action(() => UiLayout.OpenSidebar(_root, DeviceDpi)));
             _preview.SetPremultiplyAlpha(_pma.Checked);
             ApplyBackground();
             ResetFraming();
@@ -95,9 +102,9 @@ public sealed class ExportDialog : Form
         var root = new SplitContainer
         {
             Dock = DockStyle.Fill,
-            SplitterDistance = 390,
             FixedPanel = FixedPanel.Panel1
         };
+        _root = root;
 
         var settingsScroll = new Panel
         {
@@ -127,20 +134,41 @@ public sealed class ExportDialog : Form
         _timeline.Dock = DockStyle.Fill;
         AddRow(settings, "Frame", _timeline);
 
-        var scopePanel = new FlowLayoutPanel
+        var scopePanel = new TableLayoutPanel
         {
             AutoSize = true,
             Dock = DockStyle.Fill,
-            WrapContents = false
+            ColumnCount = 1,
+            RowCount = 3
         };
-        _currentAnimation.Text = "Current";
+        scopePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _currentAnimation.Text = "Only this take";
         _currentAnimation.Checked = true;
         _currentAnimation.AutoSize = true;
-        _allAnimations.Text = "All animations";
+        _allAnimations.Text = "All takes";
         _allAnimations.AutoSize = true;
-        scopePanel.Controls.Add(_currentAnimation);
-        scopePanel.Controls.Add(_allAnimations);
+        _selectedAnimations.Text = "Selected takes";
+        _selectedAnimations.AutoSize = true;
+        scopePanel.Controls.Add(_currentAnimation, 0, 0);
+        scopePanel.Controls.Add(_allAnimations, 0, 1);
+        scopePanel.Controls.Add(_selectedAnimations, 0, 2);
         AddRow(settings, "Export", scopePanel);
+
+        _selectedTakes.CheckOnClick = true;
+        _selectedTakes.IntegralHeight = false;
+        _selectedTakes.HorizontalScrollbar = true;
+        _selectedTakes.Dock = DockStyle.Fill;
+        _selectedTakes.MinimumSize = new Size(0, Font.Height * 5 + 12);
+        var selectedLabel = AddRow(settings, "Choose takes", _selectedTakes);
+        selectedLabel.Visible = false;
+        _selectedTakes.Visible = false;
+        _selectedAnimations.CheckedChanged += (_, _) =>
+        {
+            selectedLabel.Visible = _selectedAnimations.Checked;
+            _selectedTakes.Visible = _selectedAnimations.Checked;
+            if (_selectedAnimations.Checked)
+                UpdateDefaultOutput();
+        };
 
         AddSection(settings, "Output");
         ConfigureCombo(_format);
@@ -171,7 +199,7 @@ public sealed class ExportDialog : Form
             ColumnCount = 3
         };
         sizePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        sizePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
+        sizePanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         sizePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
 
         _width.Dock = DockStyle.Fill;
@@ -216,17 +244,26 @@ public sealed class ExportDialog : Form
         AddSection(settings, "Framing");
         ConfigureNumber(_zoom, 10, 1000, 100);
         _zoom.DecimalPlaces = 1;
-        _zoom.Increment = 5;
+        _zoom.Increment = 1;
         AddRow(settings, "Zoom %", _zoom);
 
         ConfigureSignedNumber(_offsetX, -500, 500, 0);
         ConfigureSignedNumber(_offsetY, -500, 500, 0);
         _offsetX.DecimalPlaces = 1;
         _offsetY.DecimalPlaces = 1;
-        _offsetX.Increment = 2;
-        _offsetY.Increment = 2;
+        _offsetX.Increment = 1;
+        _offsetY.Increment = 1;
         AddRow(settings, "X %", _offsetX);
         AddRow(settings, "Y %", _offsetY);
+
+        var freeCamera = new CheckBox
+        {
+            Text = "Free camera",
+            AutoSize = true,
+            Checked = false
+        };
+        freeCamera.CheckedChanged += (_, _) => _preview.FreeCameraEnabled = freeCamera.Checked;
+        AddRow(settings, "Preview", freeCamera);
 
         var fitButton = ActionButton("Fit current pose", (_, _) => ResetFraming());
         AddRow(settings, string.Empty, fitButton);
@@ -240,7 +277,7 @@ public sealed class ExportDialog : Form
             ColumnCount = 2
         };
         outputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        outputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 88));
+        outputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         _output.Dock = DockStyle.Fill;
         var browse = ActionButton("Browse...", (_, _) => BrowseOutput());
         browse.Dock = DockStyle.Fill;
@@ -270,7 +307,10 @@ public sealed class ExportDialog : Form
 
         _status.Text = "Adjust crop, then export.";
         _status.AutoSize = true;
-        _status.MaximumSize = new Size(340, 0);
+        settingsScroll.Resize += (_, _) =>
+            _status.MaximumSize = new Size(
+                Math.Max(180, settingsScroll.ClientSize.Width - settingsScroll.Padding.Horizontal -
+                    SystemInformation.VerticalScrollBarWidth), 0);
         settings.Controls.Add(_status, 0, settings.RowCount);
         settings.SetColumnSpan(_status, 2);
         settings.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -368,6 +408,23 @@ public sealed class ExportDialog : Form
         _zoom.ValueChanged += (_, _) => ApplyFraming();
         _offsetX.ValueChanged += (_, _) => ApplyFraming();
         _offsetY.ValueChanged += (_, _) => ApplyFraming();
+        _preview.CameraChanged += (_, framing) =>
+        {
+            // Keep the visible red export frame and the numeric controls in
+            // sync with mouse navigation; captured frames use this same view.
+            _syncingCamera = true;
+            try
+            {
+                _zoom.Value = Math.Clamp(Math.Round((decimal)framing.Zoom * 100m, 1), _zoom.Minimum, _zoom.Maximum);
+                _offsetX.Value = Math.Clamp(Math.Round((decimal)framing.OffsetX * 100m, 1), _offsetX.Minimum, _offsetX.Maximum);
+                _offsetY.Value = Math.Clamp(Math.Round((decimal)framing.OffsetY * 100m, 1), _offsetY.Minimum, _offsetY.Maximum);
+            }
+            finally
+            {
+                _syncingCamera = false;
+            }
+            ApplyFraming();
+        };
 
         _transparent.CheckedChanged += (_, _) =>
         {
@@ -411,14 +468,24 @@ public sealed class ExportDialog : Form
         {
             UpdateDefaultOutput();
         };
+        _selectedTakes.ItemCheck += (_, _) =>
+        {
+            if (IsHandleCreated)
+                BeginInvoke(new Action(() =>
+                    _status.Text = $"{_selectedTakes.CheckedItems.Count} takes selected."));
+        };
     }
 
     private void PopulateAnimations()
     {
         _animation.Items.Clear();
+        _selectedTakes.Items.Clear();
 
         foreach (var take in _session.Animations)
+        {
             _animation.Items.Add(take);
+            _selectedTakes.Items.Add(take);
+        }
 
         if (_animation.Items.Count == 0)
             return;
@@ -429,6 +496,7 @@ public sealed class ExportDialog : Form
             : 0;
 
         _animation.SelectedIndex = index;
+        _selectedTakes.SetItemChecked(index, true);
 
         if (_originalAnimationIndex >= 0)
             _player.SetTime(_originalTime);
@@ -448,6 +516,9 @@ public sealed class ExportDialog : Form
 
     private void ApplyFraming()
     {
+        if (_syncingCamera)
+            return;
+
         _preview.SetFramingTransform(
             (float)_zoom.Value / 100f,
             (float)_offsetX.Value / 100f,
@@ -572,7 +643,7 @@ public sealed class ExportDialog : Form
             Path.GetDirectoryName(_session.FilePath)!,
             "AS_FBX_exports");
 
-        if (_allAnimations.Checked)
+        if (BatchExport)
         {
             _output.Text = directory;
             return;
@@ -586,11 +657,11 @@ public sealed class ExportDialog : Form
 
     private void BrowseOutput()
     {
-        if (_allAnimations.Checked)
+        if (BatchExport)
         {
             using var dialog = new FolderBrowserDialog
             {
-                Description = "Select output folder for all animations",
+                Description = "Select output folder for the chosen animations",
                 UseDescriptionForTitle = true,
                 SelectedPath = Directory.Exists(_output.Text)
                     ? _output.Text
@@ -634,7 +705,7 @@ public sealed class ExportDialog : Form
             Quality = (int)_quality.Value,
             TransparentBackground = _transparent.Checked,
             BackgroundColor = _backgroundColor,
-            ExportAllAnimations = _allAnimations.Checked,
+            ExportAllAnimations = BatchExport,
             OutputPath = _output.Text.Trim()
         };
 
@@ -663,12 +734,17 @@ public sealed class ExportDialog : Form
             return;
         }
 
-        var takes = settings.ExportAllAnimations
+        var takes = _allAnimations.Checked
             ? _session.Animations.ToList()
-            : [selected];
+            : _selectedAnimations.Checked
+                ? _selectedTakes.CheckedItems.OfType<AnimationTake>().ToList()
+                : [selected];
 
         if (takes.Count == 0)
+        {
+            MessageBox.Show(this, "Select at least one take to export.");
             return;
+        }
 
         var restoreAnimation = _player.AnimationIndex;
         var restoreTime = _player.TimeSeconds;
@@ -873,7 +949,7 @@ public sealed class ExportDialog : Form
         table.RowCount++;
     }
 
-    private static void AddRow(
+    private static Label AddRow(
         TableLayoutPanel table,
         string label,
         Control control)
@@ -892,6 +968,7 @@ public sealed class ExportDialog : Form
         table.Controls.Add(control, 1, table.RowCount);
         table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         table.RowCount++;
+        return name;
     }
 
     private static Button ActionButton(

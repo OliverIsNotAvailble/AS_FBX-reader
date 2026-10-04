@@ -45,6 +45,7 @@ public sealed class MainForm : Form
         Height = 900;
         MinimumSize = new Size(1000, 650);
         StartPosition = FormStartPosition.CenterScreen;
+        WindowState = FormWindowState.Maximized;
         AutoScaleMode = AutoScaleMode.Font;
         Font = new Font("Segoe UI", 11F);
 
@@ -63,8 +64,7 @@ public sealed class MainForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(8, 9, 8, 7),
-            WrapContents = false,
-            AutoScroll = true
+            WrapContents = true
         };
 
         var open = Button("Open FBX", (_, _) => OpenFbx());
@@ -79,6 +79,14 @@ public sealed class MainForm : Form
         var saveProfile = Button("Save profile", (_, _) => SaveProfile());
         var loadProfile = Button("Load profile", (_, _) => LoadProfile());
         var export = Button("Export / Framing", (_, _) => OpenExportDialog());
+        var freeCamera = new CheckBox
+        {
+            Text = "Free camera",
+            AutoSize = true,
+            Padding = new Padding(8, 9, 6, 0),
+            Margin = new Padding(6, 3, 3, 3)
+        };
+        freeCamera.CheckedChanged += (_, _) => _viewer.FreeCameraEnabled = freeCamera.Checked;
 
         var pma = new CheckBox
         {
@@ -116,6 +124,7 @@ public sealed class MainForm : Form
             saveProfile,
             loadProfile,
             export,
+            freeCamera,
             pma,
             Button("Allow all", (_, _) => SetAll(true)),
             Button("Hide all", (_, _) => SetAll(false)),
@@ -123,13 +132,15 @@ public sealed class MainForm : Form
             Button("Solo", (_, _) => SoloSelected()),
             Button("New group", (_, _) => CreateRootGroup())
         ]);
+        toolbar.Controls.Add(Button("Fit view", (_, _) => _viewer.ResetFraming()));
 
         var split = new SplitContainer
         {
             Dock = DockStyle.Fill,
-            SplitterDistance = 390,
             FixedPanel = FixedPanel.Panel1
         };
+        Shown += (_, _) => BeginInvoke(new Action(() =>
+            UiLayout.OpenSidebar(split, DeviceDpi)));
 
         ConfigurePartsTree();
 

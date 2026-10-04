@@ -24,6 +24,7 @@ public sealed class MeshDeformForm : Form
         _initial = Snapshot();
         Text = $"Edit mesh shape — {part.DisplayName}";
         StartPosition = FormStartPosition.CenterParent;
+        WindowState = FormWindowState.Maximized;
         Width = 1000;
         Height = 780;
         MinimumSize = new Size(680, 500);
@@ -48,8 +49,7 @@ public sealed class MeshDeformForm : Form
             Dock = DockStyle.Top,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            WrapContents = false,
-            AutoScroll = true,
+            WrapContents = true,
             Padding = new Padding(9, 7, 9, 7)
         };
         var radius = new NumericUpDown

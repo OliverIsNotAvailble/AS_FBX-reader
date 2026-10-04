@@ -21,9 +21,32 @@ public sealed class ViewerControl : UserControl
     private float _unitsPerPixelY;
     private bool _dragged;
     private bool _suppressNextClick;
+    private bool _freeCameraEnabled;
+    private bool _cameraDragging;
+    private Point _cameraDragStart;
+    private FramingState? _cameraStart;
 
     public event EventHandler<ScenePart>? PartPicked;
     public event EventHandler<ScenePart>? PartMoved;
+    public event EventHandler<FramingState>? CameraChanged;
+
+    public bool FreeCameraEnabled
+    {
+        get => _freeCameraEnabled;
+        set
+        {
+            _freeCameraEnabled = value;
+            if (value && _session != null && !_renderer.GetFraming().Enabled)
+                _renderer.CaptureFramingReference();
+            if (!value)
+            {
+                _cameraDragging = false;
+                _cameraStart = null;
+                _gl.Capture = false;
+            }
+            _gl.Cursor = value ? Cursors.Hand : Cursors.Default;
+        }
+    }
 
     public ViewerControl()
     {
@@ -94,6 +117,16 @@ public sealed class ViewerControl : UserControl
             if (_movingPart is null)
             {
                 _suppressNextClick = false;
+                if (_freeCameraEnabled && e.Button == MouseButtons.Left && _session != null)
+                {
+                    _gl.Focus();
+                    _cameraDragStart = e.Location;
+                    _cameraStart = _renderer.GetFraming();
+                    _cameraDragging = true;
+                    _dragged = false;
+                    _gl.Capture = true;
+                    _gl.Cursor = Cursors.SizeAll;
+                }
                 return;
             }
             if (e.Button != MouseButtons.Left)
@@ -110,6 +143,24 @@ public sealed class ViewerControl : UserControl
         };
         _gl.MouseMove += (_, e) =>
         {
+            if (_cameraDragging && _cameraStart != null &&
+                (e.Button & MouseButtons.Left) != 0)
+            {
+                var dx = e.X - _cameraDragStart.X;
+                var dy = e.Y - _cameraDragStart.Y;
+                if (dx != 0 || dy != 0)
+                {
+                    var zoom = Math.Max(0.1f, _cameraStart.Zoom);
+                    _renderer.SetFramingTransform(zoom,
+                        _cameraStart.OffsetX + 2f * dx / Math.Max(1, _gl.ClientSize.Width) / zoom,
+                        _cameraStart.OffsetY - 2f * dy / Math.Max(1, _gl.ClientSize.Height) / zoom);
+                    CameraChanged?.Invoke(this, _renderer.GetFraming());
+                    _gl.Invalidate();
+                    _dragged = true;
+                }
+                return;
+            }
+
             if (_movingPart is null || !_gl.Capture ||
                 (e.Button & MouseButtons.Left) == 0)
                 return;
@@ -126,6 +177,17 @@ public sealed class ViewerControl : UserControl
         };
         _gl.MouseUp += (_, e) =>
         {
+            if (e.Button == MouseButtons.Left && _cameraDragging)
+            {
+                _cameraDragging = false;
+                _cameraStart = null;
+                _gl.Capture = false;
+                _gl.Cursor = _freeCameraEnabled ? Cursors.Hand : Cursors.Default;
+                _suppressNextClick = _dragged;
+                _dragged = false;
+                return;
+            }
+
             if (e.Button != MouseButtons.Left || _movingPart is null)
                 return;
 
@@ -149,6 +211,28 @@ public sealed class ViewerControl : UserControl
             _gl.Invalidate();
             e.Handled = true;
         };
+        _gl.MouseEnter += (_, _) =>
+        {
+            if (_freeCameraEnabled)
+                _gl.Focus();
+        };
+        _gl.MouseWheel += (_, e) =>
+        {
+            if (!_freeCameraEnabled || _session is null || e.Delta == 0)
+                return;
+
+            var framing = _renderer.GetFraming();
+            if (!framing.Enabled)
+                framing = _renderer.CaptureFramingReference();
+
+            // About 12% per wheel notch; independent of window resolution.
+            var zoom = Math.Clamp(
+                framing.Zoom * (float)Math.Pow(1.12, e.Delta / 120.0),
+                0.1f, 10f);
+            _renderer.SetFramingTransform(zoom, framing.OffsetX, framing.OffsetY);
+            CameraChanged?.Invoke(this, _renderer.GetFraming());
+            _gl.Invalidate();
+        };
     }
 
     public void BeginMovePart(ScenePart part)
@@ -169,7 +253,7 @@ public sealed class ViewerControl : UserControl
     {
         _gl.Capture = false;
         _movingPart = null;
-        _gl.Cursor = Cursors.Default;
+        _gl.Cursor = _freeCameraEnabled ? Cursors.Hand : Cursors.Default;
     }
 
     public void Attach(FbxSession session, AnimationPlayer player)
@@ -178,6 +262,8 @@ public sealed class ViewerControl : UserControl
         _session = session;
         _player = player;
         _renderer.SetScene(session, player);
+        if (_freeCameraEnabled)
+            _renderer.CaptureFramingReference();
         _overlay.Text = $"{Path.GetFileName(session.FilePath)}  |  {session.Parts.Count} parts  |  {session.Animations.Count} animations";
         _gl.Invalidate();
     }

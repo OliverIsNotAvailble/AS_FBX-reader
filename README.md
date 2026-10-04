@@ -19,6 +19,20 @@ The viewer keeps the workflow simple:
 AssetStudio -> FBX + textures -> AS_FBX-reader -> choose take -> toggle parts -> export animation
 ```
 
+The main window and export dialog open maximized. Their left panels start at
+about one fifth of the width and can be resized by dragging the splitter.
+On narrow windows, the main toolbar wraps to keep its buttons visible.
+
+Enable **Free camera** to zoom with the mouse wheel (roughly 12% per notch)
+and pan with left drag in either preview. In the main window, **Fit view**
+resets the view. In the export dialog, mouse navigation changes the framing
+used by the final video and keeps the numeric Zoom/X/Y fields in sync; the red
+border marks the output frame. **Fit current pose** resets that framing.
+
+The export scope offers **Only this take**, **All takes**, or **Selected takes**.
+The last option reveals a checked list of takes to export. All/selected takes
+write separate files to the chosen folder; a single take uses a file path.
+
 ## Visibility during an animation
 
 A checked part is **allowed**. The reader follows the FBX mesh-scale 0/1 keys

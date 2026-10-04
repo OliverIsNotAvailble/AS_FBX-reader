@@ -6,6 +6,22 @@ current code when resuming work in a later conversation.
 
 ## 0.1.16 — 2026-10-04
 
+- In progress toward 0.2.0: the main window, export dialog and mesh editor
+  open maximized. Main parts and export settings sidebars start at one fifth
+  of the window width after layout and remain draggable; they no longer start
+  as a collapsed strip at high DPI. The main toolbar wraps when needed.
+- Added Free camera to the main and export previews: mouse wheel changes zoom
+  by about 12% per notch, left drag pans, and Fit view/Fit current pose resets
+  the framing. In the exporter the Zoom/X/Y inputs reflect mouse navigation,
+  and captured frames use that same view. Framing arrow steps are now 1%.
+- Added export scope for selected takes with a checked list. Single take uses
+  a file destination; all/selected takes use a folder, and an empty selection
+  is rejected. The exporter's radio options stack vertically to stay readable.
+- Files: `UiLayout.cs`, `MainForm.cs`, `MeshDeformForm.cs`, `ViewerControl.cs`,
+  `ExportDialog.cs`, `README.md`, this changelog.
+- Verification for these new changes: pending Windows CI build and in-app
+  visual check at 4K/250% scaling. Keep the app version at 0.1.16 until the
+  interface and behavior are confirmed before calling it 0.2.0.
 - Fixed clipped text and buttons at large Windows text/DPI scaling. The mesh
   shape editor's top and bottom bars and the main toolbar now size to their
   controls; the radius input reserves space for its value and spinner.
