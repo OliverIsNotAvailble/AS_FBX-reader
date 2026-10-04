@@ -18,8 +18,12 @@ current code when resuming work in a later conversation.
   texture and the rest appeared as lines on a dark background.
 - Files: `MeshDeformForm.cs`, `MainForm.cs`, `ViewerControl.cs`,
   `SceneRenderer.cs`, `README.md`, this changelog.
-- Verification: `git diff --check` passed; Windows build and in-app visual
-  confirmation pending.
+- Verification: raw `속옷` geometry/UVs rendered as a complete garment from
+  `vamp_h.fbx`; `git diff --check` passed. The first Windows build found a
+  variable-name collision in the editor; after fixing it, the Windows/.NET 9
+  build succeeded:
+  https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37166790636.
+  In-app visual confirmation remains pending.
 
 ## 0.1.14 — 2026-10-03
 
