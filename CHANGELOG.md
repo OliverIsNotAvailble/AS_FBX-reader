@@ -18,9 +18,11 @@ current code when resuming work in a later conversation.
   window during export requests cancellation. Reduced FFmpeg's verbose logs.
 - Files: `AnimationExporter.cs`, `ViewerControl.cs`, `ExportDialog.cs`,
   `README.md`, this changelog.
-- Verification for this export update: pending Windows/.NET 9 build and user
-  interaction check. The synchronous OpenGL capture of a single very large
-  frame can still take time; cancellation is checked between frames.
+- Verification for this export update: Windows/.NET 9 build passed:
+  https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37214360627.
+  Interactive export/cancel checks remain pending. The synchronous OpenGL
+  capture of a single very large frame can still take time; cancellation is
+  checked between frames.
 - In progress toward 0.2.0: the main window, export dialog and mesh editor
   open maximized. Main parts and export settings sidebars start at one fifth
   of the window width after layout and remain draggable; they no longer start
