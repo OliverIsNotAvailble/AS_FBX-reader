@@ -40,7 +40,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.1.14";
+        Text = "AS_FBX-reader 0.1.15";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -1106,11 +1106,23 @@ public sealed class MainForm : Form
             ? _session.ResolveTexturePath(_session.Scene.Materials[part.MaterialIndex])
             : string.Empty;
 
-        using var editor = new MeshDeformForm(part, mesh, texture, _viewer.InvalidateScene);
-        if (editor.ShowDialog(this) == DialogResult.OK)
-            _status.Text = $"Mesh shape updated: {part.DisplayName}. Save profile to keep it.";
-        else
-            _status.Text = $"Mesh edit canceled: {part.DisplayName}.";
+        var wasPlaying = _player.Playing;
+        _player.Playing = false;
+        try
+        {
+            using var editor = new MeshDeformForm(part, mesh, texture,
+                () => _viewer.GetPartWorldPositions(part)
+                    .Select(p => new PointF(p.X, p.Y)).ToArray(),
+                _viewer.InvalidateScene);
+            if (editor.ShowDialog(this) == DialogResult.OK)
+                _status.Text = $"Mesh shape updated: {part.DisplayName}. Save profile to keep it.";
+            else
+                _status.Text = $"Mesh edit canceled: {part.DisplayName}.";
+        }
+        finally
+        {
+            _player.Playing = wasPlaying;
+        }
     }
 
     private void ResetMeshPosition(ScenePart part)

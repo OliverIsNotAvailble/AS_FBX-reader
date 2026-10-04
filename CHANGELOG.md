@@ -4,6 +4,23 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## 0.1.15 — 2026-10-03
+
+- Fixed the mesh editor showing imported local coordinates while the main
+  preview showed the skinned animation pose. It now opens at the selected
+  animation frame, pauses playback, and draws the same world-space vertex
+  positions as the renderer. Drag deltas are mapped back into each vertex's
+  local coordinates, so edits remain animated. Coincident duplicate vertices
+  move together when the neighbor radius is zero.
+- Replaced the unreliable GDI+ per-triangle image transform with direct
+  triangle rasterization using the imported UVs and bilinear atlas sampling.
+  This addresses the clothing editor screenshot where only one triangle had
+  texture and the rest appeared as lines on a dark background.
+- Files: `MeshDeformForm.cs`, `MainForm.cs`, `ViewerControl.cs`,
+  `SceneRenderer.cs`, `README.md`, this changelog.
+- Verification: `git diff --check` passed; Windows build and in-app visual
+  confirmation pending.
+
 ## 0.1.14 — 2026-10-03
 
 - Added **Edit mesh shape...** to the part context menu. The window shows a

@@ -225,6 +225,9 @@ public sealed class ViewerControl : UserControl
 
     public void InvalidateScene() => _gl.Invalidate();
 
+    public Vector3[] GetPartWorldPositions(ScenePart part)
+        => _renderer.GetPartWorldPositions(part);
+
     public Bitmap CaptureFrame(int width, int height)
     {
         if (!_gl.HasValidContext)

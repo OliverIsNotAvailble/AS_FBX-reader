@@ -78,6 +78,10 @@ scene. The main preview updates while dragging. Save the profile to persist
 the vertex changes; Cancel restores the shape from before opening the editor.
 Edits change local vertex positions before skinning and are used by both
 preview and export. The source FBX file is not modified.
+The editor shows the mesh as it appears at the current animation time, so
+pause or scrub to the frame you want before opening it. Playback pauses while
+the window is open and resumes afterward. Its handles follow the animated
+vertices; repeated vertices at the same point move together.
 
 ## Current test case
 

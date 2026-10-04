@@ -106,6 +106,15 @@ public sealed class SceneRenderer : IDisposable
         return ((view.Right - view.Left) / width, (view.Top - view.Bottom) / height);
     }
 
+    public Vector3[] GetPartWorldPositions(ScenePart part)
+    {
+        if (_session?.Scene is null || _player is null ||
+            !_session.NodesByName.TryGetValue(part.NodeName, out var node) || node is null)
+            return Array.Empty<Vector3>();
+
+        return GetWorldPositions(node, _session.Scene.Meshes[part.MeshIndex], part);
+    }
+
     public void SetFraming(FramingState framing)
     {
         _framing = framing.Clone();
