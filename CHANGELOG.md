@@ -4,6 +4,22 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## 0.1.14 — 2026-10-03
+
+- Added **Edit mesh shape...** to the part context menu. The window shows a
+  grid, source texture mapped to its mesh triangles, draggable vertex handles,
+  adjustable neighbor-radius falloff, per-vertex reset, Undo, Reset shape,
+  Apply and Cancel. It updates the main preview as vertices move.
+- Applied edits to local vertices before skinning in the shared renderer, so
+  playback and export use the edited geometry. Cancel restores the initial
+  edits, while Apply keeps them in the current scene. `MeshAdjustments` stores
+  indexed vertex offsets in profiles; invalid indices/non-finite values are
+  ignored on load. The FBX on disk remains unchanged.
+- Files: `MeshDeformForm.cs`, `MainForm.cs`, `ScenePart.cs`,
+  `VisibilityProfile.cs`, `SceneRenderer.cs`, `README.md`, this changelog.
+- Verification: `git diff --check` passed; Windows compilation and interactive
+  editor verification pending.
+
 ## 0.1.13 — 2026-10-03
 
 - Added per-mesh **Preserve shape (follow main bone)** when rebuilding bind

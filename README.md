@@ -69,6 +69,16 @@ avoids tearing caused by incompatible weights, but removes that part's local
 skin deformation. It is a per-mesh, profile-saved option; normal parts keep
 their existing skinning.
 
+For hand edits, right-click a part and open **Edit mesh shape...**. The editor
+shows its texture, the original triangles and draggable vertex handles over
+a grid. **Neighbor radius** bends nearby vertices along with the selected
+one; zero moves one vertex. Right-click a handle to reset it, use Undo/Reset
+shape for broader corrections, and Apply to keep the changes in the current
+scene. The main preview updates while dragging. Save the profile to persist
+the vertex changes; Cancel restores the shape from before opening the editor.
+Edits change local vertex positions before skinning and are used by both
+preview and export. The source FBX file is not modified.
+
 ## Current test case
 
 The current `agnes_h` test FBX has been checked at the FBX object level:

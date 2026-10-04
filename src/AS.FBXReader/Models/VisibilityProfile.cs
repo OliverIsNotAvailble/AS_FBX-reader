@@ -42,6 +42,7 @@ public sealed class MeshAdjustmentProfile
     public float OffsetY { get; set; }
     public bool RebuildBindPose { get; set; }
     public bool PreserveShape { get; set; }
+    public List<VertexOffset> VertexOffsets { get; set; } = new();
 }
 
 public sealed class OrganizationNodeProfile

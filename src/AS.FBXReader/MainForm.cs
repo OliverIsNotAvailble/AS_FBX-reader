@@ -40,7 +40,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.1.13";
+        Text = "AS_FBX-reader 0.1.14";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -1038,6 +1038,8 @@ public sealed class MainForm : Form
             _partsMenu.Items.Add(new ToolStripSeparator());
             _partsMenu.Items.Add("Move mesh in preview (drag)", null,
                 (_, _) => BeginMovePart(part));
+            _partsMenu.Items.Add("Edit mesh shape...", null,
+                (_, _) => EditMeshShape(part));
             _partsMenu.Items.Add(new ToolStripMenuItem(
                 "Reset mesh position", null, (_, _) => ResetMeshPosition(part))
             {
@@ -1086,6 +1088,29 @@ public sealed class MainForm : Form
     {
         _viewer.BeginMovePart(part);
         _status.Text = $"Drag in preview to move {part.DisplayName}; Esc cancels. Save profile after moving.";
+    }
+
+    private void EditMeshShape(ScenePart part)
+    {
+        if (_session.Scene is null)
+            return;
+
+        _viewer.EndMovePart();
+        var mesh = _session.Scene.Meshes[part.MeshIndex];
+        if (mesh.VertexCount == 0)
+        {
+            _status.Text = $"{part.DisplayName}: mesh has no vertices to edit.";
+            return;
+        }
+        var texture = part.MaterialIndex >= 0 && part.MaterialIndex < _session.Scene.MaterialCount
+            ? _session.ResolveTexturePath(_session.Scene.Materials[part.MaterialIndex])
+            : string.Empty;
+
+        using var editor = new MeshDeformForm(part, mesh, texture, _viewer.InvalidateScene);
+        if (editor.ShowDialog(this) == DialogResult.OK)
+            _status.Text = $"Mesh shape updated: {part.DisplayName}. Save profile to keep it.";
+        else
+            _status.Text = $"Mesh edit canceled: {part.DisplayName}.";
     }
 
     private void ResetMeshPosition(ScenePart part)
@@ -1213,7 +1238,8 @@ public sealed class MainForm : Form
                 .Where(p => !string.IsNullOrWhiteSpace(p.Alias))
                 .ToDictionary(p => p.Id, p => p.Alias!, StringComparer.Ordinal),
             MeshAdjustments = _session.Parts
-                .Where(p => p.OffsetX != 0f || p.OffsetY != 0f || p.RebuildBindPose || p.PreserveShape)
+                .Where(p => p.OffsetX != 0f || p.OffsetY != 0f || p.RebuildBindPose ||
+                            p.PreserveShape || p.VertexOffsets.Count > 0)
                 .ToDictionary(
                     p => p.Id,
                     p => new MeshAdjustmentProfile
@@ -1221,7 +1247,15 @@ public sealed class MainForm : Form
                         OffsetX = p.OffsetX,
                         OffsetY = p.OffsetY,
                         RebuildBindPose = p.RebuildBindPose,
-                        PreserveShape = p.PreserveShape
+                        PreserveShape = p.PreserveShape,
+                        VertexOffsets = p.VertexOffsets.Values
+                            .OrderBy(x => x.VertexIndex)
+                            .Select(x => new VertexOffset
+                            {
+                                VertexIndex = x.VertexIndex,
+                                X = x.X,
+                                Y = x.Y
+                            }).ToList()
                     }, StringComparer.Ordinal),
             Organization = BuildOrganizationProfile()
         }.Save(dialog.FileName);
@@ -1310,6 +1344,14 @@ public sealed class MainForm : Form
             part.OffsetY = adjustment?.OffsetY ?? 0f;
             part.RebuildBindPose = adjustment?.RebuildBindPose ?? false;
             part.PreserveShape = adjustment?.PreserveShape ?? false;
+            part.VertexOffsets.Clear();
+            foreach (var edit in adjustment?.VertexOffsets ?? new List<VertexOffset>())
+            {
+                if (edit.VertexIndex >= 0 && edit.VertexIndex <
+                    _session.Scene.Meshes[part.MeshIndex].VertexCount &&
+                    float.IsFinite(edit.X) && float.IsFinite(edit.Y))
+                    part.VertexOffsets[edit.VertexIndex] = edit;
+            }
             part.VisibilityKeys.Clear();
             part.VisibilityKeys.AddRange(profile.VisibilityKeys.Where(x => x.PartId == part.Id));
         }

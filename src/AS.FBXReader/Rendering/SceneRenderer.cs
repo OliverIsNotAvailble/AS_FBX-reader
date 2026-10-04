@@ -386,6 +386,8 @@ public sealed class SceneRenderer : IDisposable
         for (var i = 0; i < mesh.VertexCount; i++)
         {
             var p = MatrixUtil.ToOpenTk(mesh.Vertices[i]);
+            if (part.VertexOffsets.TryGetValue(i, out var edit))
+                p += new Vector3(edit.X, edit.Y, 0f);
 
             if (rigidBone >= 0)
             {

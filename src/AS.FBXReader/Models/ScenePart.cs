@@ -16,6 +16,8 @@ public sealed class ScenePart
     public float OffsetY { get; set; }
     public bool RebuildBindPose { get; set; }
     public bool PreserveShape { get; set; }
+    // Per-vertex edits in the mesh's local coordinates, before skinning.
+    public Dictionary<int, VertexOffset> VertexOffsets { get; } = new();
     public List<VisibilityKeyframe> VisibilityKeys { get; } = new();
 
     public string DisplayName
@@ -47,6 +49,13 @@ public sealed class ScenePart
     }
 
     public override string ToString() => DisplayName;
+}
+
+public sealed class VertexOffset
+{
+    public int VertexIndex { get; set; }
+    public float X { get; set; }
+    public float Y { get; set; }
 }
 
 public sealed class VisibilityKeyframe
