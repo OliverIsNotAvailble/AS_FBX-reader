@@ -21,9 +21,11 @@ current code when resuming work in a later conversation.
   `ExportDialog.cs`, `README.md`, this changelog.
 - Verification for these new changes: the first Windows CI build identified
   a WinForms serialization annotation and two local-name conflicts in the
-  camera control; these were corrected. A second build and in-app visual
-  check at 4K/250% scaling are pending. Keep the app version at 0.1.16 until the
-  interface and behavior are confirmed before calling it 0.2.0.
+  camera control; these were corrected. The second Windows/.NET 9 build passed:
+  https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37169425954.
+  In-app visual and interaction checks at 4K/250% scaling remain pending.
+  Keep the app version at 0.1.16 until the interface and behavior are confirmed
+  before calling it 0.2.0.
 - Fixed clipped text and buttons at large Windows text/DPI scaling. The mesh
   shape editor's top and bottom bars and the main toolbar now size to their
   controls; the radius input reserves space for its value and spinner.
