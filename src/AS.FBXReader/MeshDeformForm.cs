@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using Assimp;
@@ -27,10 +28,17 @@ public sealed class MeshDeformForm : Form
         AutoScaleMode = AutoScaleMode.Font;
         Font = new Font("Segoe UI", 10f);
 
+        _hint = new Label
+        {
+            Text = "Drag a vertex. Increase radius to bend its neighbors smoothly. Right-click a vertex to reset it.",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left
+        };
+
         _canvas = new MeshCanvas(part, mesh, texturePath, () =>
         {
             previewChanged();
-            _hint.Text = $"Vertex {_canvas.SelectedVertex + 1}/{mesh.VertexCount}  |  edits: {_part.VertexOffsets.Count}  |  Save profile after Apply";
+            _hint.Text = $"Vertex {(_canvas?.SelectedVertex ?? -1) + 1}/{mesh.VertexCount}  |  edits: {_part.VertexOffsets.Count}  |  Save profile after Apply";
         }, beforeEdit => _undo.Push(beforeEdit)) { Dock = DockStyle.Fill };
 
         var toolbar = new FlowLayoutPanel
@@ -84,12 +92,6 @@ public sealed class MeshDeformForm : Form
         };
         bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        _hint = new Label
-        {
-            Text = "Drag a vertex. Increase radius to bend its neighbors smoothly. Right-click a vertex to reset it.",
-            AutoSize = true,
-            Anchor = AnchorStyles.Left
-        };
         var actions = new FlowLayoutPanel
         {
             AutoSize = true,
@@ -148,6 +150,7 @@ public sealed class MeshDeformForm : Form
         private bool _dragged;
 
         public int SelectedVertex { get; private set; } = -1;
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public float BrushRadius { get; set; }
 
         public MeshCanvas(ScenePart part, Mesh mesh, string texturePath,
@@ -202,13 +205,13 @@ public sealed class MeshDeformForm : Form
             base.Dispose(disposing);
         }
 
-        private float Scale => Math.Max(0.001f,
+        private float ViewScale => Math.Max(0.001f,
             Math.Min((ClientSize.Width - 30f) / _spanX,
                      (ClientSize.Height - 30f) / _spanY));
 
         private PointF LocalToScreen(PointF p)
         {
-            var s = Scale;
+            var s = ViewScale;
             return new PointF((ClientSize.Width - _spanX * s) / 2f + (p.X - _minX) * s,
                 (ClientSize.Height - _spanY * s) / 2f + (_maxY - p.Y) * s);
         }
@@ -378,8 +381,8 @@ public sealed class MeshDeformForm : Form
             base.OnMouseMove(e);
             if (_dragVertex < 0 || _startX is null || _startY is null || _falloff is null)
                 return;
-            var dx = (e.X - _dragStart.X) / Scale;
-            var dy = (_dragStart.Y - e.Y) / Scale;
+            var dx = (e.X - _dragStart.X) / ViewScale;
+            var dy = (_dragStart.Y - e.Y) / ViewScale;
             if (dx == 0f && dy == 0f)
                 return;
             _dragged = true;
