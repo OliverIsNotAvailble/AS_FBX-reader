@@ -22,10 +22,12 @@ current code when resuming work in a later conversation.
   `SceneRenderer.cs`, `ScenePart.cs`, `VisibilityProfile.cs`,
   `AS.FBXReader.csproj`, `README.md`, this changelog.
 - Verification: the first Windows/.NET 9 build found a WinForms designer
-  serialization annotation missing from the rig canvas; it has been fixed.
-  Follow-up CI build and an interactive visual check using the user's
-  hair/face animation 7 FBX are pending; that FBX was not attached in this
-  turn. Linux workspace lacks `dotnet` and a Windows UI.
+  serialization annotation missing from the rig canvas; it was fixed and the
+  follow-up Windows/.NET 9 build passed:
+  https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37251138158.
+  An interactive visual check using the user's hair/face animation 7 FBX is
+  still pending; that FBX was not attached in this turn. Linux workspace
+  lacks `dotnet` and a Windows UI.
 
 ## 0.2.0 — 2026-10-04
 
