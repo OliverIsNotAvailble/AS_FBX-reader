@@ -6,6 +6,13 @@ current code when resuming work in a later conversation.
 
 ## 0.2.1 — 2026-10-05
 
+- Fixed a startup crash in Edit bone binding reported by the user:
+  `SplitterDistance deve ficar entre Panel1MinSize e Width - Panel2MinSize`.
+  The WinForms SplitContainer was given 260/300px panel minima while it still
+  had its tiny pre-layout width. Set its divider and scaled minima only when
+  the editor is shown and its actual width is known. File: `BoneFollowForm.cs`.
+  Windows build verification is pending; the editor still needs an interactive
+  check on the user's machine.
 - Added **Edit bone binding...** to the part context menu. The separate rig
   editor lists original weighted bones, rig nodes and the meshes using each
   node; search by mesh or bone name, select Original skin, Automatic strongest

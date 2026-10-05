@@ -153,17 +153,10 @@ public sealed class BoneFollowForm : Form
         {
             Dock = DockStyle.Fill,
             FixedPanel = FixedPanel.Panel1,
-            Panel1MinSize = 260,
-            Panel2MinSize = 300,
             SplitterWidth = 6
         };
         split.Panel1.Controls.Add(left);
         split.Panel2.Controls.Add(right);
-        split.Resize += (_, _) =>
-        {
-            if (split.Width > 700 && split.SplitterDistance < 260)
-                split.SplitterDistance = Math.Min(360, split.Width - split.Panel2MinSize - split.SplitterWidth);
-        };
 
         var footer = new TableLayoutPanel
         {
@@ -225,8 +218,17 @@ public sealed class BoneFollowForm : Form
                     Math.Clamp(Owner.Left + 18, area.Left, Math.Max(area.Left, area.Right - Width)),
                     Math.Clamp(Owner.Top + 45, area.Top, Math.Max(area.Top, area.Bottom - Height)));
             }
-            split.SplitterDistance = Math.Min(320,
-                Math.Max(split.Panel1MinSize, split.Width - split.Panel2MinSize - split.SplitterWidth));
+            // A new SplitContainer starts at 150px wide. Setting both panel
+            // minima in its initializer throws before docking has sized it.
+            var available = split.ClientSize.Width - split.SplitterWidth;
+            if (available < 20)
+                return;
+            var leftMin = Math.Min(260, available / 3);
+            var rightMin = Math.Min(300, available / 3);
+            split.SplitterDistance = Math.Clamp(Math.Min(320, available / 2),
+                leftMin, available - rightMin);
+            split.Panel1MinSize = leftMin;
+            split.Panel2MinSize = rightMin;
         };
         AcceptButton = _apply;
         CancelButton = cancel;
