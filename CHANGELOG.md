@@ -11,8 +11,9 @@ current code when resuming work in a later conversation.
   The WinForms SplitContainer was given 260/300px panel minima while it still
   had its tiny pre-layout width. Set its divider and scaled minima only when
   the editor is shown and its actual width is known. File: `BoneFollowForm.cs`.
-  Windows build verification is pending; the editor still needs an interactive
-  check on the user's machine.
+  The Windows/.NET 9 build passed:
+  https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37251773406.
+  The editor still needs an interactive check on the user's machine.
 - Added **Edit bone binding...** to the part context menu. The separate rig
   editor lists original weighted bones, rig nodes and the meshes using each
   node; search by mesh or bone name, select Original skin, Automatic strongest
