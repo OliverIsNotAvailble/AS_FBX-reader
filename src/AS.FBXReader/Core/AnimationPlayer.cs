@@ -108,6 +108,21 @@ public sealed class AnimationPlayer
             ? state.Global
             : Matrix4.Identity;
 
+    // Keeps the mesh in its original rest position while making it follow a
+    // different rig node. Row-vector order: mesh bind -> target bind inverse
+    // -> animated target -> animated mesh inverse. The renderer applies the
+    // mesh global transform afterwards, canceling that final inverse.
+    public Matrix4? GetFollowBoneMatrix(Node meshNode, string boneName)
+    {
+        if (!_states.TryGetValue(meshNode.Name, out var meshState) ||
+            !_states.TryGetValue(boneName, out var boneState))
+            return null;
+
+        var follow = meshState.BindGlobal * boneState.BindGlobal.Inverted() *
+            boneState.Global * meshState.Global.Inverted();
+        return IsFinite(follow) ? follow : null;
+    }
+
     public bool IsSourceVisible(string nodeName)
         => !_states.TryGetValue(nodeName, out var state) || state.SourceVisible;
 

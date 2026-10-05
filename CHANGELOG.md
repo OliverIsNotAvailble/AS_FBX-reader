@@ -4,6 +4,27 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## 0.2.1 — 2026-10-05
+
+- Added **Edit bone binding...** to the part context menu. The separate rig
+  editor lists original weighted bones, rig nodes and the meshes using each
+  node; search by mesh or bone name, select Original skin, Automatic strongest
+  bone, or a specific node, and scrub the pose. Its wireframe/skeleton view
+  supports fit, zoom and pan. Switching choices updates the main preview at
+  once. Apply keeps the choice in memory; Cancel restores the prior binding
+  and closing restores the original animation time and playback state.
+- An explicit node follows its animation rigidly relative to the mesh and
+  node bind poses, preserving the mesh's rest shape. The same renderer path
+  serves main preview and export. Profiles now save/load FollowBoneName;
+  older profiles still default to Original/Automatic behavior. A missing
+  saved node is ignored, and an invalid rig transform cannot be applied.
+- Files: `BoneFollowForm.cs`, `MainForm.cs`, `AnimationPlayer.cs`,
+  `SceneRenderer.cs`, `ScenePart.cs`, `VisibilityProfile.cs`,
+  `AS.FBXReader.csproj`, `README.md`, this changelog.
+- Verification: pending Windows/.NET 9 CI build and an interactive visual
+  check using the user's hair/face animation 7 FBX; that FBX was not
+  attached in this turn. Linux workspace lacks `dotnet` and a Windows UI.
+
 ## 0.2.0 — 2026-10-04
 
 - Closed the 0.1.x interface cycle after the user confirmed that the scaling

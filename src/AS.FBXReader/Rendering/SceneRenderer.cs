@@ -388,6 +388,13 @@ public sealed class SceneRenderer : IDisposable
                 }
             }
         }
+        var selectedBoneMatrix = part.PreserveShape &&
+            !string.IsNullOrWhiteSpace(part.FollowBoneName) &&
+            _session?.NodesByName.ContainsKey(part.FollowBoneName) == true
+                ? _player.GetFollowBoneMatrix(node, part.FollowBoneName)
+                : null;
+        var followMatrix = selectedBoneMatrix ??
+            (rigidBone >= 0 ? boneMatrices[rigidBone] : (Matrix4?)null);
         var positions = new Vector3[mesh.VertexCount];
         var weightsByVertex = mesh.HasBones && !part.PreserveShape ? BuildWeights(mesh) : null;
         var meshGlobal = _player.GetGlobalTransform(node.Name);
@@ -398,9 +405,9 @@ public sealed class SceneRenderer : IDisposable
             if (part.VertexOffsets.TryGetValue(i, out var edit))
                 p += new Vector3(edit.X, edit.Y, 0f);
 
-            if (rigidBone >= 0)
+            if (followMatrix is Matrix4 rigidTransform)
             {
-                p = Vector3.TransformPosition(p, boneMatrices[rigidBone]);
+                p = Vector3.TransformPosition(p, rigidTransform);
             }
             else if (mesh.HasBones && weightsByVertex is not null)
             {

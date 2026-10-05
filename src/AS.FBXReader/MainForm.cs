@@ -40,7 +40,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.2.0";
+        Text = "AS_FBX-reader 0.2.1";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -1051,6 +1051,8 @@ public sealed class MainForm : Form
                 (_, _) => BeginMovePart(part));
             _partsMenu.Items.Add("Edit mesh shape...", null,
                 (_, _) => EditMeshShape(part));
+            _partsMenu.Items.Add("Edit bone binding...", null,
+                (_, _) => EditBoneBinding(part));
             _partsMenu.Items.Add(new ToolStripMenuItem(
                 "Reset mesh position", null, (_, _) => ResetMeshPosition(part))
             {
@@ -1133,6 +1135,33 @@ public sealed class MainForm : Form
         finally
         {
             _player.Playing = wasPlaying;
+        }
+    }
+
+    private void EditBoneBinding(ScenePart part)
+    {
+        if (_session.Scene is null)
+            return;
+
+        _viewer.EndMovePart();
+        var wasPlaying = _player.Playing;
+        var originalTime = _player.TimeSeconds;
+        _player.Playing = false;
+        try
+        {
+            using var editor = new BoneFollowForm(_session, _player, part,
+                () => _viewer.GetPartWorldPositions(part)
+                    .Select(p => new PointF(p.X, p.Y)).ToArray(),
+                _viewer.InvalidateScene);
+            _status.Text = editor.ShowDialog(this) == DialogResult.OK
+                ? $"Bone binding updated: {part.DisplayName}. Save profile to keep it."
+                : $"Bone binding canceled: {part.DisplayName}.";
+        }
+        finally
+        {
+            _player.SetTime(originalTime);
+            _player.Playing = wasPlaying;
+            _viewer.InvalidateScene();
         }
     }
 
@@ -1262,7 +1291,7 @@ public sealed class MainForm : Form
                 .ToDictionary(p => p.Id, p => p.Alias!, StringComparer.Ordinal),
             MeshAdjustments = _session.Parts
                 .Where(p => p.OffsetX != 0f || p.OffsetY != 0f || p.RebuildBindPose ||
-                            p.PreserveShape || p.VertexOffsets.Count > 0)
+                            p.PreserveShape || p.FollowBoneName is not null || p.VertexOffsets.Count > 0)
                 .ToDictionary(
                     p => p.Id,
                     p => new MeshAdjustmentProfile
@@ -1271,6 +1300,7 @@ public sealed class MainForm : Form
                         OffsetY = p.OffsetY,
                         RebuildBindPose = p.RebuildBindPose,
                         PreserveShape = p.PreserveShape,
+                        FollowBoneName = p.FollowBoneName,
                         VertexOffsets = p.VertexOffsets.Values
                             .OrderBy(x => x.VertexIndex)
                             .Select(x => new VertexOffset
@@ -1367,6 +1397,8 @@ public sealed class MainForm : Form
             part.OffsetY = adjustment?.OffsetY ?? 0f;
             part.RebuildBindPose = adjustment?.RebuildBindPose ?? false;
             part.PreserveShape = adjustment?.PreserveShape ?? false;
+            part.FollowBoneName = adjustment?.FollowBoneName is string boneName &&
+                _session.NodesByName.ContainsKey(boneName) ? boneName : null;
             part.VertexOffsets.Clear();
             foreach (var edit in adjustment?.VertexOffsets ?? new List<VertexOffset>())
             {

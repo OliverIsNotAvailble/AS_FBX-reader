@@ -90,6 +90,18 @@ avoids tearing caused by incompatible weights, but removes that part's local
 skin deformation. It is a per-mesh, profile-saved option; normal parts keep
 their existing skinning.
 
+To try a different bone, right-click the part and choose **Edit bone
+binding...**. The window lists the mesh's original bones and weights, plus
+rig nodes grouped by the meshes that use them. Search for a related mesh such
+as "face", select its bone, and scrub through the animation. The skeleton and
+mesh outline in the editor and the main preview update as you try choices.
+Wheel zooms and dragging pans the skeleton view; Fit mesh and Fit mesh + rig
+reset its view. **Original skin** restores the FBX's weighted deformation;
+**Automatic** follows this mesh's strongest original bone. Choosing another
+bone preserves the mesh's rest shape and follows that bone rigidly. Apply
+keeps the selection in the current scene; Cancel restores the old binding.
+Save profile to persist it for preview and export. The source FBX stays intact.
+
 For hand edits, right-click a part and open **Edit mesh shape...**. The editor
 shows its texture, the original triangles and draggable vertex handles over
 a grid. **Neighbor radius** bends nearby vertices along with the selected
