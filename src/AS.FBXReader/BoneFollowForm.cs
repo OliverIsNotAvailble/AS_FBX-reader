@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
 using Assimp;
 using AS.FBXReader.Core;
@@ -303,6 +304,7 @@ public sealed class BoneFollowForm : Form
         private Point _dragStart;
         private PointF _panStart;
         private bool _fitRig;
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public string? SelectedBone { get; set; }
 
         public RigCanvas(Node root, AnimationPlayer player, Mesh mesh,

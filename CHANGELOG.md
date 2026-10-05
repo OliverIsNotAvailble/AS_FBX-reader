@@ -21,9 +21,11 @@ current code when resuming work in a later conversation.
 - Files: `BoneFollowForm.cs`, `MainForm.cs`, `AnimationPlayer.cs`,
   `SceneRenderer.cs`, `ScenePart.cs`, `VisibilityProfile.cs`,
   `AS.FBXReader.csproj`, `README.md`, this changelog.
-- Verification: pending Windows/.NET 9 CI build and an interactive visual
-  check using the user's hair/face animation 7 FBX; that FBX was not
-  attached in this turn. Linux workspace lacks `dotnet` and a Windows UI.
+- Verification: the first Windows/.NET 9 build found a WinForms designer
+  serialization annotation missing from the rig canvas; it has been fixed.
+  Follow-up CI build and an interactive visual check using the user's
+  hair/face animation 7 FBX are pending; that FBX was not attached in this
+  turn. Linux workspace lacks `dotnet` and a Windows UI.
 
 ## 0.2.0 — 2026-10-04
 
