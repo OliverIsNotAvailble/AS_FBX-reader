@@ -754,6 +754,7 @@ public sealed class MainForm : Form
             Cursor = Cursors.WaitCursor;
 
             _session.Open(dialog.FileName);
+            _excludedPartIds.Clear();
             _player.Rebuild();
             _viewer.Attach(_session, _player);
 
@@ -1214,6 +1215,15 @@ public sealed class MainForm : Form
 
         _partsMenu.Items.Clear();
 
+        var selectedParts = GetSelectedPartNodes();
+        if (selectedParts.Count > 0)
+        {
+            _partsMenu.Items.Add(
+                $"Exclude {selectedParts.Count} selected mesh(es) (Delete)", null,
+                (_, _) => ExcludeSelectedParts());
+            _partsMenu.Items.Add(new ToolStripSeparator());
+        }
+
         var selected = _parts.SelectedNode;
 
         if (selected?.Tag is ScenePart part)
@@ -1254,7 +1264,10 @@ public sealed class MainForm : Form
                 Checked = part.ForceVisible
             });
             _partsMenu.Items.Add(new ToolStripSeparator());
-            _partsMenu.Items.Add("Move mesh in preview (drag)", null,
+            _partsMenu.Items.Add(
+                selectedParts.Count > 1
+                    ? $"Move {selectedParts.Count} meshes in preview (drag)"
+                    : "Move mesh in preview (drag)", null,
                 (_, _) => BeginMovePart(part));
             _partsMenu.Items.Add("Edit mesh shape...", null,
                 (_, _) => EditMeshShape(part));
@@ -1306,8 +1319,14 @@ public sealed class MainForm : Form
 
     private void BeginMovePart(ScenePart part)
     {
-        _viewer.BeginMovePart(part);
-        _status.Text = $"Drag in preview to move {part.DisplayName}; Esc cancels. Save profile after moving.";
+        var selected = GetSelectedPartNodes().Select(x => (ScenePart)x.Tag!).ToList();
+        if (!selected.Contains(part))
+            selected = new List<ScenePart> { part };
+
+        _viewer.BeginMoveParts(selected);
+        _status.Text = selected.Count > 1
+            ? $"Drag in preview to move {selected.Count} meshes; Esc cancels. Save profile."
+            : $"Drag in preview to move {part.DisplayName}; Esc cancels. Save profile after moving.";
     }
 
     private void EditMeshShape(ScenePart part)
@@ -1477,6 +1496,7 @@ public sealed class MainForm : Form
         {
             SourceFbx = Path.GetFileName(_session.FilePath),
             Animation = (_animations.SelectedItem as AnimationTake)?.Name,
+            ExcludedPartIds = _excludedPartIds.OrderBy(x => x, StringComparer.Ordinal).ToList(),
             HiddenPartIds = _session.Parts
                 .Where(p => !p.Visible)
                 .Select(p => p.Id)
@@ -1576,6 +1596,15 @@ public sealed class MainForm : Form
 
         var profile = VisibilityProfile.Load(dialog.FileName);
 
+        // Restore all imported parts before applying exclusions from this
+        // profile, so loading another profile can bring old parts back.
+        _viewer.EndMovePart();
+        _session.RestoreAllParts();
+        _excludedPartIds.Clear();
+        foreach (var id in profile.ExcludedPartIds ?? new List<string>())
+            _excludedPartIds.Add(id);
+        _session.Parts.RemoveAll(x => _excludedPartIds.Contains(x.Id));
+
         foreach (var part in _session.Parts)
         {
             part.Alias = profile.PartAliases.TryGetValue(part.Id, out var alias)
@@ -1642,6 +1671,8 @@ public sealed class MainForm : Form
         {
             _parts.BeginUpdate();
             _parts.Nodes.Clear();
+            _selectedNodes.Clear();
+            _selectionAnchor = null;
 
             foreach (var profileNode in organization)
             {
