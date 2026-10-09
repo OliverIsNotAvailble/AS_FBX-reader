@@ -17,6 +17,8 @@ public sealed class ViewerControl : UserControl
     private AnimationPlayer? _player;
     private readonly SceneRenderer _renderer = new();
     private ScenePart? _movingPart;
+    private readonly List<ScenePart> _movingParts = new();
+    private readonly Dictionary<ScenePart, (float X, float Y)> _moveStartOffsets = new();
     private Point _dragStart;
     private float _startOffsetX;
     private float _startOffsetY;
@@ -140,6 +142,9 @@ public sealed class ViewerControl : UserControl
             _dragStart = e.Location;
             _startOffsetX = _movingPart.OffsetX;
             _startOffsetY = _movingPart.OffsetY;
+            _moveStartOffsets.Clear();
+            foreach (var part in _movingParts)
+                _moveStartOffsets[part] = (part.OffsetX, part.OffsetY);
             _dragged = false;
             (_unitsPerPixelX, _unitsPerPixelY) = _renderer.GetWorldUnitsPerPixel(
                 _gl.ClientSize.Width, _gl.ClientSize.Height);
@@ -175,8 +180,12 @@ public sealed class ViewerControl : UserControl
                 return;
 
             _dragged = true;
-            _movingPart.OffsetX = _startOffsetX + dx * _unitsPerPixelX;
-            _movingPart.OffsetY = _startOffsetY - dy * _unitsPerPixelY;
+            foreach (var part in _movingParts)
+            {
+                var start = _moveStartOffsets[part];
+                part.OffsetX = start.X + dx * _unitsPerPixelX;
+                part.OffsetY = start.Y - dy * _unitsPerPixelY;
+            }
             _gl.Invalidate();
         };
         _gl.MouseUp += (_, e) =>
@@ -209,8 +218,14 @@ public sealed class ViewerControl : UserControl
             if (e.KeyCode != Keys.Escape || _movingPart is null)
                 return;
 
-            _movingPart.OffsetX = _startOffsetX;
-            _movingPart.OffsetY = _startOffsetY;
+            foreach (var part in _movingParts)
+            {
+                if (_moveStartOffsets.TryGetValue(part, out var start))
+                {
+                    part.OffsetX = start.X;
+                    part.OffsetY = start.Y;
+                }
+            }
             EndMovePart();
             _gl.Invalidate();
             e.Handled = true;
@@ -239,12 +254,17 @@ public sealed class ViewerControl : UserControl
         };
     }
 
-    public void BeginMovePart(ScenePart part)
+    public void BeginMovePart(ScenePart part) => BeginMoveParts(new[] { part });
+
+    public void BeginMoveParts(IEnumerable<ScenePart> parts)
     {
         EndMovePart();
-        _movingPart = part;
-        _startOffsetX = part.OffsetX;
-        _startOffsetY = part.OffsetY;
+        _movingParts.AddRange(parts.Distinct());
+        if (_movingParts.Count == 0)
+            return;
+        _movingPart = _movingParts[0];
+        _startOffsetX = _movingPart.OffsetX;
+        _startOffsetY = _movingPart.OffsetY;
         // Freeze automatic framing so the image does not chase the cursor.
         if (!_renderer.GetFraming().Enabled)
             _renderer.CaptureFramingReference();
@@ -257,6 +277,8 @@ public sealed class ViewerControl : UserControl
     {
         _gl.Capture = false;
         _movingPart = null;
+        _movingParts.Clear();
+        _moveStartOffsets.Clear();
         _gl.Cursor = _freeCameraEnabled ? Cursors.Hand : Cursors.Default;
     }
 
