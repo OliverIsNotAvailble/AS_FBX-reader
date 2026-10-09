@@ -33,7 +33,9 @@ current code when resuming work in a later conversation.
 - Verification: Windows/.NET 9 CI passed for the code changes before this
   version/documentation update:
   https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37983108414.
-  Main-branch CI and interactive tests on the user's FBX are still required.
+  Main-branch Windows/.NET 9 CI also passed:
+  https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37983809115.
+  Interactive tests on the user's FBX are still required.
   Exclusion occurs after the initial FBX import; it does not remove native
   import costs or animation-bone evaluation work.
 
