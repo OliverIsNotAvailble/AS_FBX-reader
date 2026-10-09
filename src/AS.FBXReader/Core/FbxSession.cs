@@ -14,6 +14,15 @@ public sealed class FbxSession : IDisposable
     public Scene? Scene { get; private set; }
     public int DuplicateModelNamesFixed { get; private set; }
     public List<ScenePart> Parts { get; } = new();
+    private readonly List<ScenePart> _originalParts = new();
+    public IReadOnlyList<ScenePart> OriginalParts => _originalParts;
+
+    // Restore a full imported scene before applying a different profile.
+    public void RestoreAllParts()
+    {
+        Parts.Clear();
+        Parts.AddRange(_originalParts);
+    }
     public List<AnimationTake> Animations { get; } = new();
     public IReadOnlyDictionary<string, Node> NodesByName => _nodesByName;
 
@@ -54,6 +63,7 @@ public sealed class FbxSession : IDisposable
 
         IndexNodes(Scene.RootNode);
         IndexParts(Scene.RootNode);
+        _originalParts.AddRange(Parts);
         IndexAnimations();
     }
 
@@ -293,6 +303,7 @@ public sealed class FbxSession : IDisposable
         FilePath = string.Empty;
         DuplicateModelNamesFixed = 0;
         Parts.Clear();
+        _originalParts.Clear();
         Animations.Clear();
         _nodesByName.Clear();
     }

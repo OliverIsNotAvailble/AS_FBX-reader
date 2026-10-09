@@ -4,6 +4,39 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## 0.2.2 — 2026-10-09
+
+- Added Explorer-style multi-selection for meshes in the main parts tree:
+  Ctrl+click toggles individual meshes, while Shift+click selects a visible
+  interval. Drag multiple selected meshes together to reorder them in the tree.
+  Groups retain their existing single-node move behavior.
+- Press Delete or use **Exclude selected meshes** in the context menu to remove
+  selected parts from the active scene. Excluded parts disappear from the tree
+  and are omitted by the same active-parts iteration used by preview and export.
+  The source FBX is never rewritten. This is different from simply hiding a
+  mesh, which leaves it in the active parts registry.
+- Save profile now persists the excluded IDs as `ExcludedPartIds`. Loading a
+  profile restores the full in-memory part registry from the original FBX import
+  first, then excludes the saved IDs. Switching to another profile can restore
+  parts without reopening the FBX. Existing profiles without `ExcludedPartIds`
+  remain compatible.
+- **Move mesh(es) in preview** uses the current multi-selection to translate all
+  selected parts by the same drag distance, preserving their relative offsets.
+  Escape cancels the displacement for the whole batch. The movement is saved
+  using the existing per-mesh adjustment data in the profile.
+- Changed window title and project version to 0.2.2; continued development is
+  performed on `main` throughout V2. The `1.17.0-Final` branch remains the
+  frozen V1 snapshot; a new final branch is reserved for the end of V2.
+- Files: `MainForm.cs`, `FbxSession.cs`, `ViewerControl.cs`,
+  `VisibilityProfile.cs`, `AS.FBXReader.csproj`, `README.md`,
+  this changelog.
+- Verification: Windows/.NET 9 CI passed for the code changes before this
+  version/documentation update:
+  https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37983108414.
+  Main-branch CI and interactive tests on the user's FBX are still required.
+  Exclusion occurs after the initial FBX import; it does not remove native
+  import costs or animation-bone evaluation work.
+
 ## 0.2.1 — 2026-10-05
 
 - Fixed a startup crash in Edit bone binding reported by the user:

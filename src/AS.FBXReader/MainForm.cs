@@ -14,6 +14,11 @@ public sealed class MainForm : Form
     // V0.1.6: real hierarchical organizer instead of a flat CheckedListBox.
     // Tree order is authoritative for painter/layer order: TOP = FRONT.
     private readonly TreeView _parts = new();
+    private readonly HashSet<TreeNode> _selectedNodes = new();
+    private TreeNode? _selectionAnchor;
+    private TreeNode? _pendingSingleSelection;
+    private bool _suppressSelectionSync;
+    private readonly HashSet<string> _excludedPartIds = new(StringComparer.Ordinal);
 
     private readonly ComboBox _animations = new();
     private readonly TrackBar _timeline = new();
@@ -40,7 +45,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.2.1";
+        Text = "AS_FBX-reader 0.2.2";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -258,41 +263,44 @@ public sealed class MainForm : Form
     {
         _parts.DrawNode += (_, e) =>
         {
-            if (e.Node != _dropTarget ||
-                _dropPlacement is not (DropPlacement.Before or DropPlacement.After))
-            {
-                e.DrawDefault = true;
-                return;
-            }
-
-            // Draw the target text ourselves so WinForms does not erase the
-            // insertion line with its default text painting afterwards.
-            var selected = (e.State & TreeNodeStates.Selected) != 0;
+            var selected = _selectedNodes.Contains(e.Node);
             var back = selected ? SystemColors.Highlight : _parts.BackColor;
             var fore = selected ? SystemColors.HighlightText : _parts.ForeColor;
             using (var brush = new SolidBrush(back))
                 e.Graphics.FillRectangle(brush, e.Bounds);
+
             TextRenderer.DrawText(
                 e.Graphics, e.Node.Text, e.Node.NodeFont ?? _parts.Font,
                 e.Bounds, fore,
                 TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter |
                 TextFormatFlags.EndEllipsis);
 
-            var y = _dropPlacement == DropPlacement.Before
-                ? e.Node.Bounds.Top + 1
-                : e.Node.Bounds.Bottom - 2;
-            using var pen = new Pen(Color.FromArgb(25, 105, 190), 3);
-            e.Graphics.DrawLine(pen, 2, y, _parts.ClientSize.Width - 4, y);
+            if (e.Node == _dropTarget &&
+                _dropPlacement is DropPlacement.Before or DropPlacement.After)
+            {
+                var y = _dropPlacement == DropPlacement.Before
+                    ? e.Node.Bounds.Top + 1
+                    : e.Node.Bounds.Bottom - 2;
+                using var pen = new Pen(Color.FromArgb(25, 105, 190), 3);
+                e.Graphics.DrawLine(pen, 2, y, _parts.ClientSize.Width - 4, y);
+            }
+        };
+
+        _parts.AfterSelect += (_, e) =>
+        {
+            // Native keyboard navigation still works without modifiers.
+            if (!_suppressSelectionSync &&
+                (Control.ModifierKeys & (Keys.Control | Keys.Shift)) == Keys.None)
+                SelectSingleNode(e.Node);
         };
 
         _parts.NodeMouseClick += (_, e) =>
         {
-            _parts.SelectedNode = e.Node;
-
             if (e.Button == MouseButtons.Left && IsStateImageClick(e.Node, e.Location))
-            {
                 ToggleNode(e.Node);
-            }
+            else if (e.Button == MouseButtons.Left && _pendingSingleSelection == e.Node)
+                SelectSingleNode(e.Node);
+            _pendingSingleSelection = null;
         };
 
         _parts.NodeMouseDoubleClick += (_, e) =>
@@ -335,6 +343,14 @@ public sealed class MainForm : Form
 
         _parts.KeyDown += (_, e) =>
         {
+            if (e.KeyCode == Keys.Delete && GetSelectedPartNodes().Count > 0)
+            {
+                ExcludeSelectedParts();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             if (e.KeyCode == Keys.F2 && _parts.SelectedNode is { Tag: ScenePart } node)
             {
                 BeginRenamePart(node);
@@ -354,6 +370,7 @@ public sealed class MainForm : Form
             if (e.Item is not TreeNode node)
                 return;
 
+            _pendingSingleSelection = null;
             _dragNode = node;
             try
             {
@@ -379,7 +396,7 @@ public sealed class MainForm : Form
             ScrollTreeDuringDrag(client.Y);
             var (target, placement) = GetDropLocation(client);
 
-            if (target == null || IsNodeInside(_dragNode, target))
+            if (target == null || GetDragNodes(_dragNode).Any(x => IsNodeInside(x, target)))
             {
                 e.Effect = DragDropEffects.None;
                 ClearDropIndicator();
@@ -402,20 +419,65 @@ public sealed class MainForm : Form
             var (target, placement) = GetDropLocation(client);
             ClearDropIndicator();
 
-            if (target == null || IsNodeInside(source, target))
+            if (target == null)
                 return;
 
-            MoveTreeNode(source, target, placement);
+            var moving = GetDragNodes(source);
+            if (moving.Any(x => IsNodeInside(x, target)))
+                return;
+
+            if (moving.Count > 1)
+                MoveTreeNodes(moving, target, placement);
+            else
+                MoveTreeNode(source, target, placement);
         };
 
         _parts.MouseDown += (_, e) =>
         {
-            if (e.Button != MouseButtons.Right)
+            var node = _parts.GetNodeAt(e.Location);
+            if (node == null)
                 return;
 
-            var node = _parts.GetNodeAt(e.Location);
-            if (node != null)
-                _parts.SelectedNode = node;
+            if (e.Button == MouseButtons.Right)
+            {
+                _pendingSingleSelection = null;
+                if (!_selectedNodes.Contains(node))
+                    SelectSingleNode(node);
+                SetPrimaryNode(node);
+                return;
+            }
+
+            if (e.Button != MouseButtons.Left || IsStateImageClick(node, e.Location))
+                return;
+
+            var shift = (Control.ModifierKeys & Keys.Shift) != Keys.None;
+            var ctrl = (Control.ModifierKeys & Keys.Control) != Keys.None;
+
+            if (shift && node.Tag is ScenePart)
+            {
+                SelectRangeTo(node);
+                SetPrimaryNode(node);
+            }
+            else if (ctrl && node.Tag is ScenePart)
+            {
+                if (!_selectedNodes.Add(node))
+                    _selectedNodes.Remove(node);
+                _selectionAnchor = node;
+                _parts.Invalidate();
+                SetPrimaryNode(node);
+            }
+            else if (!shift && !ctrl && _selectedNodes.Count > 1 &&
+                     _selectedNodes.Contains(node))
+            {
+                // Preserve the batch for a drag. A click without dragging
+                // collapses it in NodeMouseClick.
+                _pendingSingleSelection = node;
+            }
+            else
+            {
+                SelectSingleNode(node);
+                SetPrimaryNode(node);
+            }
         };
 
         _viewer.PartPicked += (_, part) =>
@@ -424,13 +486,17 @@ public sealed class MainForm : Form
             if (node == null)
                 return;
 
-            _parts.SelectedNode = node;
+            SelectSingleNode(node);
+            SetPrimaryNode(node);
             node.EnsureVisible();
             _status.Text = $"Selected from preview: {part.DisplayName}";
         };
         _viewer.PartMoved += (_, part) =>
         {
-            _status.Text = $"Moved {part.DisplayName}: X {part.OffsetX:0.###}, Y {part.OffsetY:0.###}. Save profile to keep it.";
+            var count = GetSelectedPartNodes().Count;
+            _status.Text = count > 1
+                ? $"Moved {count} meshes in preview. Save profile to keep it."
+                : $"Moved {part.DisplayName}: X {part.OffsetX:0.###}, Y {part.OffsetY:0.###}. Save profile to keep it.";
         };
 
         _animations.SelectedIndexChanged += (_, _) =>
@@ -472,6 +538,102 @@ public sealed class MainForm : Form
 
             _viewer.InvalidateScene();
         };
+    }
+
+    // Multi-select emulates Explorer on top of the native WinForms TreeView.
+    private void SelectSingleNode(TreeNode node)
+    {
+        _selectedNodes.Clear();
+        _selectedNodes.Add(node);
+        _selectionAnchor = node;
+        _parts.Invalidate();
+    }
+
+    private void SetPrimaryNode(TreeNode node)
+    {
+        _suppressSelectionSync = true;
+        try { _parts.SelectedNode = node; }
+        finally { _suppressSelectionSync = false; }
+    }
+
+    private void SelectRangeTo(TreeNode target)
+    {
+        var visible = new List<TreeNode>();
+        for (var node = _parts.Nodes.Count > 0 ? _parts.Nodes[0] : null;
+             node != null; node = node.NextVisibleNode)
+            visible.Add(node);
+
+        var start = visible.IndexOf(_selectionAnchor ?? target);
+        var end = visible.IndexOf(target);
+        if (start < 0 || end < 0)
+        {
+            SelectSingleNode(target);
+            return;
+        }
+
+        _selectedNodes.Clear();
+        for (var n = Math.Min(start, end); n <= Math.Max(start, end); n++)
+        {
+            if (visible[n].Tag is ScenePart)
+                _selectedNodes.Add(visible[n]);
+        }
+        _parts.Invalidate();
+    }
+
+    private List<TreeNode> GetSelectedPartNodes()
+        => EnumerateTreePartNodes().Where(_selectedNodes.Contains).ToList();
+
+    private List<TreeNode> GetDragNodes(TreeNode source)
+    {
+        if (source.Tag is ScenePart && _selectedNodes.Contains(source))
+        {
+            var selected = GetSelectedPartNodes();
+            if (selected.Count > 1)
+                return selected;
+        }
+        return new List<TreeNode> { source };
+    }
+
+    private void ExcludeSelectedParts()
+    {
+        var nodes = GetSelectedPartNodes();
+        if (nodes.Count == 0)
+            return;
+
+        var result = MessageBox.Show(
+            this,
+            $"Exclude {nodes.Count} selected mesh(es) from the active scene?\n\n" +
+            "They disappear from the tree, preview and export. " +
+            "The original FBX is untouched. Save profile to keep the exclusions.",
+            "Exclude meshes from profile",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question);
+        if (result != DialogResult.Yes)
+            return;
+
+        _viewer.EndMovePart();
+        foreach (var node in nodes)
+        {
+            if (node.Tag is ScenePart part)
+                _excludedPartIds.Add(part.Id);
+        }
+
+        _session.Parts.RemoveAll(x => _excludedPartIds.Contains(x.Id));
+        _parts.BeginUpdate();
+        try
+        {
+            foreach (var node in nodes)
+                node.Remove();
+            _selectedNodes.Clear();
+            _selectionAnchor = null;
+        }
+        finally { _parts.EndUpdate(); }
+
+        SyncPartOrderFromTree();
+        RefreshGroupStates();
+        _parts.Invalidate();
+        _viewer.InvalidateScene();
+        _status.Text = $"Excluded {nodes.Count} mesh(es). Save profile to keep it.";
     }
 
     private bool IsStateImageClick(TreeNode node, Point point)
@@ -592,6 +754,7 @@ public sealed class MainForm : Form
             Cursor = Cursors.WaitCursor;
 
             _session.Open(dialog.FileName);
+            _excludedPartIds.Clear();
             _player.Rebuild();
             _viewer.Attach(_session, _player);
 
@@ -640,6 +803,8 @@ public sealed class MainForm : Form
         {
             _parts.BeginUpdate();
             _parts.Nodes.Clear();
+            _selectedNodes.Clear();
+            _selectionAnchor = null;
 
             foreach (var part in _session.Parts)
                 _parts.Nodes.Add(CreatePartNode(part));
@@ -933,6 +1098,49 @@ public sealed class MainForm : Form
         _status.Text = $"Moved: {movedName} -> {destination}";
     }
 
+    private void MoveTreeNodes(
+        IReadOnlyList<TreeNode> moving, TreeNode target, DropPlacement placement)
+    {
+        if (moving.Count == 0 || placement == DropPlacement.None ||
+            moving.Any(x => IsNodeInside(x, target)))
+            return;
+
+        _parts.BeginUpdate();
+        try
+        {
+            foreach (var source in moving)
+                source.Remove();
+
+            if (placement == DropPlacement.Inside && target.Tag is PartGroup)
+            {
+                foreach (var source in moving)
+                    target.Nodes.Add(source);
+                target.Expand();
+            }
+            else
+            {
+                var collection = target.Parent?.Nodes ?? _parts.Nodes;
+                var index = target.Index + (placement == DropPlacement.After ? 1 : 0);
+                foreach (var source in moving)
+                    collection.Insert(index++, source);
+            }
+
+            _selectedNodes.Clear();
+            foreach (var node in moving)
+                _selectedNodes.Add(node);
+            _selectionAnchor = moving[0];
+            SetPrimaryNode(moving[0]);
+            moving[0].EnsureVisible();
+        }
+        finally { _parts.EndUpdate(); }
+
+        SyncPartOrderFromTree();
+        RefreshGroupStates();
+        _parts.Invalidate();
+        _viewer.InvalidateScene();
+        _status.Text = $"Moved {moving.Count} selected meshes in the tree.";
+    }
+
     private static bool IsNodeInside(TreeNode source, TreeNode potentialDescendant)
     {
         var current = potentialDescendant;
@@ -1007,6 +1215,15 @@ public sealed class MainForm : Form
 
         _partsMenu.Items.Clear();
 
+        var selectedParts = GetSelectedPartNodes();
+        if (selectedParts.Count > 0)
+        {
+            _partsMenu.Items.Add(
+                $"Exclude {selectedParts.Count} selected mesh(es) (Delete)", null,
+                (_, _) => ExcludeSelectedParts());
+            _partsMenu.Items.Add(new ToolStripSeparator());
+        }
+
         var selected = _parts.SelectedNode;
 
         if (selected?.Tag is ScenePart part)
@@ -1047,7 +1264,10 @@ public sealed class MainForm : Form
                 Checked = part.ForceVisible
             });
             _partsMenu.Items.Add(new ToolStripSeparator());
-            _partsMenu.Items.Add("Move mesh in preview (drag)", null,
+            _partsMenu.Items.Add(
+                selectedParts.Count > 1
+                    ? $"Move {selectedParts.Count} meshes in preview (drag)"
+                    : "Move mesh in preview (drag)", null,
                 (_, _) => BeginMovePart(part));
             _partsMenu.Items.Add("Edit mesh shape...", null,
                 (_, _) => EditMeshShape(part));
@@ -1099,8 +1319,14 @@ public sealed class MainForm : Form
 
     private void BeginMovePart(ScenePart part)
     {
-        _viewer.BeginMovePart(part);
-        _status.Text = $"Drag in preview to move {part.DisplayName}; Esc cancels. Save profile after moving.";
+        var selected = GetSelectedPartNodes().Select(x => (ScenePart)x.Tag!).ToList();
+        if (!selected.Contains(part))
+            selected = new List<ScenePart> { part };
+
+        _viewer.BeginMoveParts(selected);
+        _status.Text = selected.Count > 1
+            ? $"Drag in preview to move {selected.Count} meshes; Esc cancels. Save profile."
+            : $"Drag in preview to move {part.DisplayName}; Esc cancels. Save profile after moving.";
     }
 
     private void EditMeshShape(ScenePart part)
@@ -1270,6 +1496,7 @@ public sealed class MainForm : Form
         {
             SourceFbx = Path.GetFileName(_session.FilePath),
             Animation = (_animations.SelectedItem as AnimationTake)?.Name,
+            ExcludedPartIds = _excludedPartIds.OrderBy(x => x, StringComparer.Ordinal).ToList(),
             HiddenPartIds = _session.Parts
                 .Where(p => !p.Visible)
                 .Select(p => p.Id)
@@ -1369,6 +1596,15 @@ public sealed class MainForm : Form
 
         var profile = VisibilityProfile.Load(dialog.FileName);
 
+        // Restore all imported parts before applying exclusions from this
+        // profile, so loading another profile can bring old parts back.
+        _viewer.EndMovePart();
+        _session.RestoreAllParts();
+        _excludedPartIds.Clear();
+        foreach (var id in profile.ExcludedPartIds ?? new List<string>())
+            _excludedPartIds.Add(id);
+        _session.Parts.RemoveAll(x => _excludedPartIds.Contains(x.Id));
+
         foreach (var part in _session.Parts)
         {
             part.Alias = profile.PartAliases.TryGetValue(part.Id, out var alias)
@@ -1435,6 +1671,8 @@ public sealed class MainForm : Form
         {
             _parts.BeginUpdate();
             _parts.Nodes.Clear();
+            _selectedNodes.Clear();
+            _selectionAnchor = null;
 
             foreach (var profileNode in organization)
             {

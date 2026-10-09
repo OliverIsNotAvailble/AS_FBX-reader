@@ -8,6 +8,8 @@ public sealed class VisibilityProfile
     public string SourceFbx { get; set; } = string.Empty;
     public string? Animation { get; set; }
     public List<string> HiddenPartIds { get; set; } = new();
+    // Parts removed from active scene; the FBX file itself is never changed.
+    public List<string> ExcludedPartIds { get; set; } = new();
     public List<string> ForcedPartIds { get; set; } = new();
     public List<VisibilityKeyframe> VisibilityKeys { get; set; } = new();
 

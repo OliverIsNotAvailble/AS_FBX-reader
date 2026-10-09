@@ -1,6 +1,6 @@
 # AS_FBX-reader
 
-Current version: **0.2.0**.
+Current version: **0.2.2**.
 
 Small Windows tool for FBX files exported by the custom AssetStudio/AS19 patch.
 
@@ -70,9 +70,20 @@ Drag a mesh or group above/below a row to insert it at the blue line; dragging
 to the middle of a group puts it inside that group. The tree scrolls while
 dragging near its top or bottom edge. The top of the tree renders in front.
 
+Select multiple meshes in the parts tree with **Ctrl+click** to toggle individual
+rows or **Shift+click** to select the range between rows. Drag the selected
+meshes together to move them as a batch in the layer tree. To permanently
+remove unwanted spline/FFD pieces from the *active scene*, press **Delete** or
+choose **Exclude selected meshes** in the context menu. These excluded IDs are
+saved to the profile as `ExcludedPartIds`, and loading a saved profile removes
+them from the active tree, preview and export automatically. The source FBX is
+never changed, and switching profiles can bring excluded pieces back. Exclusion
+does not bypass the initial import of the original FBX.
+
 To correct a part's placement, right-click its row and choose **Move mesh in
-preview (drag)**, then drag anywhere in the preview. Release to finish, or
-press Esc to cancel. **Reset mesh position** removes the correction. This
+preview (drag)**, then drag anywhere in the preview. If several meshes are selected, the same
+movement is applied to the whole selection. Release to finish, or press Esc
+to cancel. **Reset mesh position** removes the correction. This
 shifts the whole mesh after its animation and skinning, so playback and export
 use the same placement. Save the profile to keep it; the FBX itself is not
 rewritten.
