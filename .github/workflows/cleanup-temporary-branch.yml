@@ -1,0 +1,20 @@
+name: Remove temporary FBX development branch
+
+on:
+  push:
+    paths:
+      - '.github/workflows/cleanup-temporary-branch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.repository == 'OliverIsNotAvailble/AS_FBX-reader' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete accidental branch fix/mesh-exclusions-multiselect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/fix/mesh-exclusions-multiselect"
