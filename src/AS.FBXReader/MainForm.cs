@@ -18,6 +18,7 @@ public sealed class MainForm : Form
     private TreeNode? _selectionAnchor;
     private TreeNode? _pendingSingleSelection;
     private bool _suppressSelectionSync;
+    private bool _explicitRename;
     private readonly HashSet<string> _excludedPartIds = new(StringComparer.Ordinal);
 
     private readonly ComboBox _animations = new();
@@ -45,7 +46,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.2.2";
+        Text = "AS_FBX-reader 0.2.3";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -183,7 +184,8 @@ public sealed class MainForm : Form
         _parts.ShowPlusMinus = true;
         _parts.ShowRootLines = true;
         _parts.AllowDrop = true;
-        _parts.LabelEdit = true;
+        // Disable WinForms delayed single-click editing while selecting meshes.
+        _parts.LabelEdit = false;
         _parts.DrawMode = TreeViewDrawMode.OwnerDrawText;
         _parts.StateImageList = _checkStateImages;
         _parts.ItemHeight = Math.Max(checkSize + 8, Font.Height + 12);
@@ -306,14 +308,16 @@ public sealed class MainForm : Form
         _parts.NodeMouseDoubleClick += (_, e) =>
         {
             if (e.Button == MouseButtons.Left &&
+                Control.ModifierKeys == Keys.None &&
                 e.Node.Tag is ScenePart &&
+                e.Node.Bounds.Contains(e.Location) &&
                 !IsStateImageClick(e.Node, e.Location))
                 BeginRenamePart(e.Node);
         };
 
         _parts.BeforeLabelEdit += (_, e) =>
         {
-            if (e.Node?.Tag is not ScenePart)
+            if (!_explicitRename || e.Node?.Tag is not ScenePart)
                 e.CancelEdit = true;
         };
 
@@ -336,6 +340,8 @@ public sealed class MainForm : Form
 
             _parts.BeginInvoke(new Action(() =>
             {
+                _explicitRename = false;
+                _parts.LabelEdit = false;
                 if (node.TreeView == _parts)
                     node.Text = part.DisplayName;
             }));
@@ -1264,6 +1270,16 @@ public sealed class MainForm : Form
                 Checked = part.ForceVisible
             });
             _partsMenu.Items.Add(new ToolStripSeparator());
+            _partsMenu.Items.Add("Copy mesh (separate PNG)", null,
+                (_, _) => CopyMesh(part));
+            if (part.TextureOverridePath is { } copiedTexture)
+            {
+                _partsMenu.Items.Add("Open copied texture", null,
+                    (_, _) => OpenCopiedTexture(copiedTexture));
+                _partsMenu.Items.Add("Reload copied texture", null,
+                    (_, _) => ReloadCopiedTexture(copiedTexture));
+            }
+            _partsMenu.Items.Add(new ToolStripSeparator());
             _partsMenu.Items.Add(
                 selectedParts.Count > 1
                     ? $"Move {selectedParts.Count} meshes in preview (drag)"
@@ -1317,6 +1333,112 @@ public sealed class MainForm : Form
         _status.Text = $"{part.Name}: {(part.ForceVisible ? "forced visible" : "FBX animation visibility")}";
     }
 
+    private void CopyMesh(ScenePart source)
+    {
+        if (_session.Scene is null)
+            return;
+        try
+        {
+            var originalTexture = source.TextureOverridePath;
+            if (string.IsNullOrWhiteSpace(originalTexture))
+            {
+                if (source.MaterialIndex < 0 ||
+                    source.MaterialIndex >= _session.Scene.MaterialCount)
+                    throw new FileNotFoundException("The selected mesh has no texture.");
+                originalTexture = _session.ResolveTexturePath(
+                    _session.Scene.Materials[source.MaterialIndex]);
+            }
+
+            if (string.IsNullOrWhiteSpace(originalTexture) ||
+                !File.Exists(originalTexture))
+                throw new FileNotFoundException("Source texture not found.", originalTexture);
+
+            var folder = Path.Combine(Path.GetDirectoryName(originalTexture)!,
+                "AS_FBX-reader_Copies");
+            Directory.CreateDirectory(folder);
+            var copyId = "copy:" + Guid.NewGuid().ToString("N");
+            var safeName = new string(source.Name
+                .Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch)
+                .ToArray()).Trim();
+            if (safeName.Length == 0)
+                safeName = "mesh";
+            if (safeName.Length > 48)
+                safeName = safeName[..48];
+            var copiedTexture = Path.Combine(folder,
+                $"{safeName}_{copyId[5..17]}.png");
+
+            // Keep the source atlas untouched; identical canvas dimensions/UVs.
+            if (Path.GetExtension(originalTexture).Equals(".png",
+                StringComparison.OrdinalIgnoreCase))
+                File.Copy(originalTexture, copiedTexture);
+            else
+            {
+                using var bitmap = new Bitmap(originalTexture);
+                bitmap.Save(copiedTexture, System.Drawing.Imaging.ImageFormat.Png);
+            }
+
+            var clone = _session.DuplicatePart(source, copyId, copiedTexture);
+            var sourceNode = FindPartNode(source);
+            var collection = sourceNode?.Parent?.Nodes ?? _parts.Nodes;
+            var node = CreatePartNode(clone);
+            collection.Insert(sourceNode is null ? collection.Count : sourceNode.Index + 1, node);
+            SyncPartOrderFromTree();
+            RefreshGroupStates();
+            SelectSingleNode(node);
+            SetPrimaryNode(node);
+            node.EnsureVisible();
+            _viewer.InvalidateScene();
+            _status.Text = $"Copied mesh: {Path.GetFileName(copiedTexture)}. Save profile.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Copy mesh failed",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void OpenCopiedTexture(string path)
+    {
+        if (!File.Exists(path))
+        {
+            MessageBox.Show(this, $"Copied texture not found:\n{path}",
+                "Missing texture", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Open image failed",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void ReloadCopiedTexture(string path)
+    {
+        if (!File.Exists(path))
+        {
+            MessageBox.Show(this, $"Copied texture not found:\n{path}",
+                "Missing texture", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        try
+        {
+            _viewer.ReloadTexture(path);
+            _status.Text = $"Reloaded copied texture: {Path.GetFileName(path)}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Reload texture failed",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
     private void BeginMovePart(ScenePart part)
     {
         var selected = GetSelectedPartNodes().Select(x => (ScenePart)x.Tag!).ToList();
@@ -1341,9 +1463,10 @@ public sealed class MainForm : Form
             _status.Text = $"{part.DisplayName}: mesh has no vertices to edit.";
             return;
         }
-        var texture = part.MaterialIndex >= 0 && part.MaterialIndex < _session.Scene.MaterialCount
-            ? _session.ResolveTexturePath(_session.Scene.Materials[part.MaterialIndex])
-            : string.Empty;
+        var texture = part.TextureOverridePath ??
+            (part.MaterialIndex >= 0 && part.MaterialIndex < _session.Scene.MaterialCount
+                ? _session.ResolveTexturePath(_session.Scene.Materials[part.MaterialIndex])
+                : string.Empty);
 
         var wasPlaying = _player.Playing;
         _player.Playing = false;
@@ -1459,10 +1582,23 @@ public sealed class MainForm : Form
             if (node.TreeView != _parts)
                 return;
 
-            _parts.SelectedNode = node;
+            SetPrimaryNode(node);
+            SelectSingleNode(node);
             _parts.Focus();
             node.Text = part.Alias ?? part.Name;
-            node.BeginEdit();
+            _explicitRename = true;
+            _parts.LabelEdit = true;
+            try
+            {
+                node.BeginEdit();
+            }
+            catch
+            {
+                _explicitRename = false;
+                _parts.LabelEdit = false;
+                node.Text = part.DisplayName;
+                throw;
+            }
         }));
     }
 
@@ -1497,6 +1633,18 @@ public sealed class MainForm : Form
             SourceFbx = Path.GetFileName(_session.FilePath),
             Animation = (_animations.SelectedItem as AnimationTake)?.Name,
             ExcludedPartIds = _excludedPartIds.OrderBy(x => x, StringComparer.Ordinal).ToList(),
+            ClonedParts = _session.Parts
+                .Where(p => !string.IsNullOrWhiteSpace(p.SourcePartId) &&
+                            !string.IsNullOrWhiteSpace(p.TextureOverridePath))
+                .Select(p => new ClonedMeshProfile
+                {
+                    Id = p.Id,
+                    SourcePartId = p.SourcePartId!,
+                    Name = p.Name,
+                    TexturePath = Path.GetRelativePath(
+                        Path.GetDirectoryName(_session.FilePath)!,
+                        p.TextureOverridePath!)
+                }).ToList(),
             HiddenPartIds = _session.Parts
                 .Where(p => !p.Visible)
                 .Select(p => p.Id)
@@ -1600,6 +1748,27 @@ public sealed class MainForm : Form
         // profile, so loading another profile can bring old parts back.
         _viewer.EndMovePart();
         _session.RestoreAllParts();
+        var originals = _session.OriginalParts
+            .ToDictionary(p => p.Id, StringComparer.Ordinal);
+        var missingTextures = 0;
+        foreach (var entry in profile.ClonedParts ?? new List<ClonedMeshProfile>())
+        {
+            if (string.IsNullOrWhiteSpace(entry.Id) ||
+                string.IsNullOrWhiteSpace(entry.SourcePartId) ||
+                string.IsNullOrWhiteSpace(entry.TexturePath) ||
+                !originals.TryGetValue(entry.SourcePartId, out var source) ||
+                _session.Parts.Any(p => p.Id == entry.Id))
+                continue;
+
+            var texture = Path.IsPathFullyQualified(entry.TexturePath)
+                ? entry.TexturePath
+                : Path.Combine(Path.GetDirectoryName(_session.FilePath)!, entry.TexturePath);
+            texture = Path.GetFullPath(texture);
+            if (!File.Exists(texture))
+                missingTextures++;
+            _session.DuplicatePart(source, entry.Id, texture,
+                string.IsNullOrWhiteSpace(entry.Name) ? null : entry.Name);
+        }
         _excludedPartIds.Clear();
         foreach (var id in profile.ExcludedPartIds ?? new List<string>())
             _excludedPartIds.Add(id);
@@ -1658,7 +1827,9 @@ public sealed class MainForm : Form
         }
 
         _viewer.InvalidateScene();
-        _status.Text = $"Profile loaded: {Path.GetFileName(dialog.FileName)}";
+        _status.Text = $"Profile loaded: {Path.GetFileName(dialog.FileName)}" +
+            (missingTextures == 0 ? string.Empty :
+                $" | Warning: {missingTextures} copied texture(s) missing");
     }
 
     private void BuildTreeFromOrganization(IReadOnlyList<OrganizationNodeProfile> organization)

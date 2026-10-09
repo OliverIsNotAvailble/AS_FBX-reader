@@ -337,6 +337,15 @@ public sealed class ViewerControl : UserControl
 
     public void InvalidateScene() => _gl.Invalidate();
 
+    public void ReloadTexture(string path)
+    {
+        if (!_gl.IsHandleCreated)
+            return;
+        _gl.MakeCurrent();
+        _renderer.ReloadTexture(path);
+        _gl.Invalidate();
+    }
+
     public Vector3[] GetPartWorldPositions(ScenePart part)
         => _renderer.GetPartWorldPositions(part);
 

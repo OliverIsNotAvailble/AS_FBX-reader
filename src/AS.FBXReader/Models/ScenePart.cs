@@ -9,6 +9,9 @@ public sealed class ScenePart
     public required int MeshIndex { get; init; }
     public int MaterialIndex { get; init; }
     public bool HasBones { get; init; }
+    // Independent scene copy sharing source FBX geometry, skinning and animation.
+    public string? SourcePartId { get; init; }
+    public string? TextureOverridePath { get; init; }
     public bool Visible { get; set; } = true;
     public bool ForceVisible { get; set; }
     // World-space correction after skinning; applies to preview and export.

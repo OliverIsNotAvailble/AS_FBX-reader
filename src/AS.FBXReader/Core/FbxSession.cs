@@ -23,6 +23,55 @@ public sealed class FbxSession : IDisposable
         Parts.Clear();
         Parts.AddRange(_originalParts);
     }
+
+    public ScenePart DuplicatePart(ScenePart source, string id, string texturePath,
+        string? savedName = null)
+    {
+        if (Scene is null)
+            throw new InvalidOperationException("Open an FBX first.");
+        if (Parts.Any(p => p.Id == id))
+            throw new InvalidOperationException($"Duplicate mesh part id: {id}");
+
+        var clone = new ScenePart
+        {
+            Id = id,
+            Name = savedName ?? (source.Name + " Copy"),
+            NodeName = source.NodeName,
+            MeshIndex = source.MeshIndex,
+            MaterialIndex = source.MaterialIndex,
+            HasBones = source.HasBones,
+            SourcePartId = source.SourcePartId ?? source.Id,
+            TextureOverridePath = Path.GetFullPath(texturePath),
+            Visible = source.Visible,
+            ForceVisible = source.ForceVisible,
+            OffsetX = source.OffsetX,
+            OffsetY = source.OffsetY,
+            RebuildBindPose = source.RebuildBindPose,
+            PreserveShape = source.PreserveShape,
+            FollowBoneName = source.FollowBoneName
+        };
+        foreach (var entry in source.VertexOffsets)
+        {
+            clone.VertexOffsets[entry.Key] = new VertexOffset
+            {
+                VertexIndex = entry.Value.VertexIndex,
+                X = entry.Value.X,
+                Y = entry.Value.Y
+            };
+        }
+        foreach (var key in source.VisibilityKeys)
+        {
+            clone.VisibilityKeys.Add(new VisibilityKeyframe
+            {
+                PartId = clone.Id,
+                Animation = key.Animation,
+                Seconds = key.Seconds,
+                Visible = key.Visible
+            });
+        }
+        Parts.Add(clone);
+        return clone;
+    }
     public List<AnimationTake> Animations { get; } = new();
     public IReadOnlyDictionary<string, Node> NodesByName => _nodesByName;
 

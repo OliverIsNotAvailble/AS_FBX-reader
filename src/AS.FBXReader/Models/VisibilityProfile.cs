@@ -10,6 +10,7 @@ public sealed class VisibilityProfile
     public List<string> HiddenPartIds { get; set; } = new();
     // Parts removed from active scene; the FBX file itself is never changed.
     public List<string> ExcludedPartIds { get; set; } = new();
+    public List<ClonedMeshProfile> ClonedParts { get; set; } = new();
     public List<string> ForcedPartIds { get; set; } = new();
     public List<VisibilityKeyframe> VisibilityKeys { get; set; } = new();
 
@@ -36,6 +37,15 @@ public sealed class VisibilityProfile
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
+}
+
+public sealed class ClonedMeshProfile
+{
+    public string Id { get; set; } = string.Empty;
+    public string SourcePartId { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    // Stored relative to the source FBX directory.
+    public string TexturePath { get; set; } = string.Empty;
 }
 
 public sealed class MeshAdjustmentProfile

@@ -4,6 +4,38 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## 0.2.3 — 2026-10-09
+
+- Fixed accidental rename while selecting batches with Ctrl/Shift: WinForms'
+  delayed single-click LabelEdit is disabled. Mouse renaming now requires a
+  real double-click on the mesh label with no Ctrl/Shift; F2 and explicit
+  Rename from the context menu remain available.
+- Added **Copy mesh (separate PNG)** to the mesh context menu. Creates an
+  independent scene entry with its own GUID-based part ID and texture copy
+  under `AS_FBX-reader_Copies` beside the original texture. A PNG is copied
+  unchanged; other supported images are converted to PNG for editing.
+  The original texture and FBX are never modified.
+- A clone reuses source FBX geometry, UVs, skinning and animation while
+  receiving independent visibility, position, vertex edits and texture data.
+  Override textures are honored by preview, frame export and mesh editing.
+  **Open copied texture** uses the default image app; **Reload copied texture**
+  evicts the GPU texture cache after editing externally.
+- Profiles persist clones under `ClonedParts` with original-part identifiers,
+  stable clone IDs, names, and PNG paths relative to the FBX directory.
+  Loading recreates clones before applying the scene tree, draw order, timing,
+  position edits, exclusions and aliases. Older profiles still load.
+- Constraints: the clone retains its source mesh UV layout and copies the
+  full original image/atlas; editing requires an external image program.
+  Missing clone textures are reported in the status bar. Excluding a clone
+  doesn't automatically delete the PNG on disk. Initial FBX import remains.
+- Version set to 0.2.3. Changes committed directly to `main`; V1 branch
+  `1.17.0-Final` remains frozen. README intentionally not modified.
+- Files: `MainForm.cs`, `ScenePart.cs`, `FbxSession.cs`,
+  `VisibilityProfile.cs`, `SceneRenderer.cs`, `TextureCache.cs`,
+  `ViewerControl.cs`, `AS.FBXReader.csproj`, this changelog.
+- Verification: Windows/.NET 9 GitHub Actions build pending; interaction and
+  image editing on the user's model have not yet been tested.
+
 ## 0.2.2 — 2026-10-09
 
 - Added Explorer-style multi-selection for meshes in the main parts tree:

@@ -92,6 +92,12 @@ public sealed class TextureCache : IDisposable
         }
     }
 
+    public void Evict(string path)
+    {
+        if (_textures.Remove(path, out var texture))
+            GL.DeleteTexture(texture);
+    }
+
     private static void PremultiplyBgra(
         System.Drawing.Imaging.BitmapData bits,
         int width,

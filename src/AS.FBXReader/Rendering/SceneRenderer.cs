@@ -219,7 +219,7 @@ public sealed class SceneRenderer : IDisposable
         for (var i = prepared.Count - 1; i >= 0; i--)
         {
             var item = prepared[i];
-            BindMaterial(item.Mesh.MaterialIndex);
+            BindMaterial(item.Part, item.Mesh.MaterialIndex);
             DrawMesh(item.Mesh, item.Positions);
         }
 
@@ -340,16 +340,27 @@ public sealed class SceneRenderer : IDisposable
         }
     }
 
-    private void BindMaterial(int materialIndex)
+    public void ReloadTexture(string path)
     {
-        if (_session?.Scene is null || materialIndex < 0 || materialIndex >= _session.Scene.MaterialCount)
+        if (_initialized)
+            _textures.Evict(path);
+    }
+
+    private void BindMaterial(ScenePart part, int materialIndex)
+    {
+        if (_session?.Scene is null)
         {
             GL.Uniform1(GL.GetUniformLocation(_program, "uUseTexture"), 0);
             return;
         }
 
-        var material = _session.Scene.Materials[materialIndex];
-        var path = _session.ResolveTexturePath(material);
+        string path;
+        if (!string.IsNullOrWhiteSpace(part.TextureOverridePath))
+            path = part.TextureOverridePath;
+        else if (materialIndex >= 0 && materialIndex < _session.Scene.MaterialCount)
+            path = _session.ResolveTexturePath(_session.Scene.Materials[materialIndex]);
+        else
+            path = string.Empty;
         var texture = _textures.GetOrLoad(path);
         if (texture == 0)
         {
