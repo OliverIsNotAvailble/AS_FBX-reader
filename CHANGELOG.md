@@ -33,8 +33,10 @@ current code when resuming work in a later conversation.
 - Files: `MainForm.cs`, `ScenePart.cs`, `FbxSession.cs`,
   `VisibilityProfile.cs`, `SceneRenderer.cs`, `TextureCache.cs`,
   `ViewerControl.cs`, `AS.FBXReader.csproj`, this changelog.
-- Verification: Windows/.NET 9 GitHub Actions build pending; interaction and
-  image editing on the user's model have not yet been tested.
+- Verification: Windows/.NET 9 build passed:
+  https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/37986877167.
+  Interactive checks (Ctrl/Shift selection, two-click rename, image cloning,
+  external PNG changes and profile reload) on the user's FBX remain pending.
 
 ## 0.2.2 — 2026-10-09
 
