@@ -46,7 +46,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.2.3";
+        Text = "AS_FBX-reader 3D Preview 0.3.0";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -130,6 +130,7 @@ public sealed class MainForm : Form
             saveProfile,
             loadProfile,
             export,
+            Button("3D Viewer / PNG", (_, _) => OpenThreeDDialog()),
             freeCamera,
             pma,
             Button("Allow all", (_, _) => SetAll(true)),
@@ -2040,6 +2041,21 @@ public sealed class MainForm : Form
             _animations.SelectedIndex = _player.AnimationIndex;
         }
 
+        _viewer.InvalidateScene();
+    }
+
+    private void OpenThreeDDialog()
+    {
+        if (_session.Scene is null)
+        {
+            MessageBox.Show(this, "Open an FBX first, then open the 3D viewer.",
+                "3D Viewer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        _player.Playing = false;
+        using var dialog = new ThreeDViewerForm(_session);
+        dialog.ShowDialog(this);
         _viewer.InvalidateScene();
     }
 

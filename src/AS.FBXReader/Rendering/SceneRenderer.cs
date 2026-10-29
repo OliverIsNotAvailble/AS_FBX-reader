@@ -24,6 +24,46 @@ public sealed class SceneRenderer : IDisposable
     private bool _transparentBackground;
     private Color _backgroundColor = Color.FromArgb(28, 28, 28);
     private FramingState _framing = new();
+    private bool _threeD;
+    private float _orbitYaw = 25f;
+    private float _orbitPitch = 12f;
+    private float _orbitZoom = 1f;
+    private bool _orbitFitPending = true;
+    private Vector3 _orbitCenter = Vector3.Zero;
+    private float _orbitRadius = 1f;
+    private float _panX;
+    private float _panY;
+    public bool ThreeDEnabled => _threeD;
+    public (float Yaw, float Pitch, float Zoom) Orbit => (_orbitYaw, _orbitPitch, _orbitZoom);
+
+    public void SetThreeDMode(bool enabled)
+    {
+        _threeD = enabled;
+        _orbitFitPending = true;
+    }
+
+    public void SetOrbit(float yaw, float pitch, float zoom)
+    {
+        _orbitYaw = yaw % 360f;
+        _orbitPitch = Math.Clamp(pitch, -85f, 85f);
+        _orbitZoom = Math.Clamp(zoom, 0.1f, 20f);
+    }
+
+    public void SetOrbitPan(float x, float y)
+    {
+        _panX = Math.Clamp(x, -10f, 10f);
+        _panY = Math.Clamp(y, -10f, 10f);
+    }
+
+    public void ResetOrbit()
+    {
+        _orbitYaw = 25f;
+        _orbitPitch = 12f;
+        _orbitZoom = 1f;
+        _panX = _panY = 0f;
+        _orbitFitPending = true;
+    }
+
 
     public bool PremultiplyAlpha => _premultiplyAlpha;
     public bool TransparentBackground => _transparentBackground;
@@ -68,6 +108,7 @@ public sealed class SceneRenderer : IDisposable
         _session = session;
         _player = player;
         _framing = new FramingState();
+        ResetOrbit();
     }
 
     public void SetBackground(bool transparent, Color color)
@@ -133,7 +174,7 @@ public sealed class SceneRenderer : IDisposable
 
     public ScenePart? PickPart(int screenX, int screenY, int width, int height)
     {
-        if (_session?.Scene is null || _player is null || width <= 0 || height <= 0)
+        if (_threeD || _session?.Scene is null || _player is null || width <= 0 || height <= 0)
             return null;
 
         var prepared = PrepareVisibleParts();
@@ -195,27 +236,34 @@ public sealed class SceneRenderer : IDisposable
             return;
 
         var prepared = PrepareVisibleParts();
-        var view = BuildView(prepared, width, height);
-        var projection = Matrix4.CreateOrthographicOffCenter(
-            view.Left,
-            view.Right,
-            view.Bottom,
-            view.Top,
-            -10000f,
-            10000f);
+        Matrix4 projection;
+        if (_threeD)
+        {
+            if (_orbitFitPending)
+                FitOrbit(prepared);
+            projection = BuildOrbitProjection(width, height);
+            GL.Enable(EnableCap.DepthTest);
+            GL.DepthFunc(DepthFunction.Lequal);
+            GL.DepthMask(true);
+        }
+        else
+        {
+            var view = BuildView(prepared, width, height);
+            projection = Matrix4.CreateOrthographicOffCenter(
+                view.Left, view.Right, view.Bottom, view.Top,
+                -10000f, 10000f);
+            GL.Disable(EnableCap.DepthTest);
+        }
 
         ApplyBlendMode();
-
         GL.UseProgram(_program);
         GL.UniformMatrix4(GL.GetUniformLocation(_program, "uProjection"), false, ref projection);
         GL.Uniform4(GL.GetUniformLocation(_program, "uColor"), 1f, 1f, 1f, 1f);
         GL.Uniform1(GL.GetUniformLocation(_program, "uTexture"), 0);
+        GL.Uniform1(GL.GetUniformLocation(_program, "uThreeD"), _threeD ? 1 : 0);
 
-        // Manual layer order is authoritative.
-        // The parts list shown in the UI is FRONT -> BACK (top -> bottom), so
-        // painter's-order rendering must draw it in reverse: bottom/back first,
-        // top/front last. This lets the user repair ambiguous Unity sorting
-        // directly by dragging items instead of depending on imperfect FBX Z data.
+        // The 2D mode retains its existing manual part order. In 3D, actual
+        // depth testing decides which textured triangles are in front.
         for (var i = prepared.Count - 1; i >= 0; i--)
         {
             var item = prepared[i];
@@ -225,8 +273,41 @@ public sealed class SceneRenderer : IDisposable
 
         GL.BindVertexArray(0);
         GL.UseProgram(0);
+        if (_threeD)
+            GL.Disable(EnableCap.DepthTest);
     }
 
+
+    private void FitOrbit(IReadOnlyList<PreparedPart> prepared)
+    {
+        var (min, max) = EstimateExtents(prepared);
+        _orbitCenter = (min + max) * 0.5f;
+        _orbitRadius = Math.Max(0.01f, (max - min).Length * 0.5f);
+        _orbitFitPending = false;
+    }
+
+    private Matrix4 BuildOrbitProjection(int width, int height)
+    {
+        var aspect = Math.Max(0.01f, width / (float)Math.Max(1, height));
+        const float fov = MathF.PI / 4f;
+        var yaw = MathHelper.DegreesToRadians(_orbitYaw);
+        var pitch = MathHelper.DegreesToRadians(_orbitPitch);
+        // Perspective camera with Y up, always aiming at the object center.
+        var direction = new Vector3(
+            MathF.Sin(yaw) * MathF.Cos(pitch),
+            MathF.Sin(pitch),
+            MathF.Cos(yaw) * MathF.Cos(pitch));
+        var dist = _orbitRadius * 3.5f / _orbitZoom;
+        var right = Vector3.Normalize(Vector3.Cross(Vector3.UnitY, direction));
+        var up = Vector3.Normalize(Vector3.Cross(direction, right));
+        var target = _orbitCenter + (right * _panX + up * _panY) * _orbitRadius;
+        var eye = target + direction * dist;
+        var near = Math.Max(0.001f, dist / 500f);
+        var far = Math.Max(100f, dist + _orbitRadius * 30f);
+        var view = Matrix4.LookAt(eye, target, Vector3.UnitY);
+        var perspective = Matrix4.CreatePerspectiveFieldOfView(fov, aspect, near, far);
+        return view * perspective;
+    }
 
     private List<PreparedPart> PrepareVisibleParts()
     {
@@ -565,8 +646,10 @@ public sealed class SceneRenderer : IDisposable
         layout(location=1) in vec2 aUv;
         uniform mat4 uProjection;
         out vec2 vUv;
+        out vec3 vWorld;
         void main() {
             vUv = aUv;
+            vWorld = aPosition;
             gl_Position = uProjection * vec4(aPosition, 1.0);
         }
         """;
@@ -574,14 +657,22 @@ public sealed class SceneRenderer : IDisposable
     private const string FragmentShader = """
         #version 330 core
         in vec2 vUv;
+        in vec3 vWorld;
         uniform vec4 uColor;
         uniform bool uUseTexture;
+        uniform bool uThreeD;
         uniform sampler2D uTexture;
         out vec4 fragColor;
         void main() {
             vec4 texel = uUseTexture ? texture(uTexture, vUv) : vec4(1.0);
-            if (texel.a < 0.001) discard;
-            fragColor = texel * uColor;
+            if (texel.a < 0.005) discard;
+            float light = 1.0;
+            if (uThreeD) {
+                vec3 normal = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+                vec3 sun = normalize(vec3(.45, .85, .55));
+                light = .74 + .26 * abs(dot(normal, sun));
+            }
+            fragColor = vec4(texel.rgb * light, texel.a) * uColor;
         }
         """;
 

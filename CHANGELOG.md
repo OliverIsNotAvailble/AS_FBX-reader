@@ -1,5 +1,19 @@
 # AS_FBX-reader changelog
 
+## 0.3.0-3d-preview.1 — branch `3D` — 2026-10-29
+
+- **Experimental separate 3D viewing and 2D snapshot export** based on `main` 0.2.3. This work lives exclusively on branch `3D`; `main` and the existing 2D editor/exporter remain unchanged.
+- Added `3D Viewer / PNG` to the main toolbar. Open any FBX with the existing AssimpNetter importer, click the new button to launch a modal 3D window with its own AnimationPlayer, and choose an animation or rest pose independently of the original 2D window.
+- 3D renderer mode reuses the existing textured mesh and CPU skinning path but adds a **perspective orbit camera**, computed 3D mesh bounds, a per-pixel flat directional light, depth testing and 3D world transforms instead of the 2D XY orthographic/painter-order camera. Initial orbit is 25° yaw / 12° pitch; wheel zoom; left-drag orbit; right-drag pan. Depth testing in 3D prevents rear mesh faces displaying over front faces.
+- Built a Blender-style clickable/drag-oriented `OrbitSphereControl` displaying X/Y/Z axes, axis snapping and preset Front, Back, Left, Right, Top and Bottom view buttons. Numeric yaw/pitch/zoom controls reflect live changes to the 3D viewer.
+- Motion selector, play, pause, rest pose and a timeline let users stop at the exact desired pose. No bone authoring or model editing is added.
+- **EXPORT PNG (RGBA)** captures the active pose at 64–4096 px chosen width/height, with transparent background, using the shared OpenGL offscreen capture and new 24-bit depth renderbuffer; saves a regular flat PNG. Preview and export use the same orbit camera and current animation pose. Restores opaque preview after export. No FBX modifications.
+- Resolved diffuse-texture path more flexibly for FBXs whose referenced `textures/name.png` was exported beside the `.fbx`. No texture relocation or writes.
+- Modified: `SceneRenderer.cs`, `ViewerControl.cs`, `MainForm.cs`, `FbxSession.cs`, `AS.FBXReader.csproj`. Added: `ThreeDViewerForm.cs`, `OrbitSphereControl.cs`. This changelog updated in the same commit; README not modified.
+- Known limits: first 3D preview/prototype; some transparent textured surfaces may require per-material sorting, and unusual FBX rig conventions may need camera-axis adjustments. No Blender-like bone pose editing, no real-time PBR materials or environment maps.
+- Verification: .NET 9 Windows compile pending and actual FBX/PNG visual inspection on the user's Windows GPU required.
+
+
 Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.

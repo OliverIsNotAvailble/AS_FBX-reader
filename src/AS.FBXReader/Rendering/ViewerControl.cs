@@ -8,6 +8,7 @@ using AS.FBXReader.Models;
 namespace AS.FBXReader.Rendering;
 
 public readonly record struct CapturedFrame(int Width, int Height, bool Transparent, byte[] Pixels);
+public readonly record struct OrbitAngles(float Yaw, float Pitch, float Zoom);
 
 public sealed class ViewerControl : UserControl
 {
@@ -30,6 +31,48 @@ public sealed class ViewerControl : UserControl
     private bool _cameraDragging;
     private Point _cameraDragStart;
     private FramingState? _cameraStart;
+    private bool _threeDMode;
+    private bool _orbitDragging;
+    private Point _orbitDragStart;
+    private OrbitAngles _orbitDragBase;
+    private bool _orbitPanning;
+    private Point _panDragStart;
+    private float _panX;
+    private float _panY;
+    private float _panXBase;
+    private float _panYBase;
+
+    public event EventHandler<OrbitAngles>? OrbitChanged;
+
+    public void Enable3DMode()
+    {
+        EndMovePart();
+        _threeDMode = true;
+        _renderer.SetThreeDMode(true);
+        _gl.Cursor = Cursors.Hand;
+        _gl.Invalidate();
+    }
+
+    public OrbitAngles GetOrbit()
+    {
+        var values = _renderer.Orbit;
+        return new OrbitAngles(values.Yaw, values.Pitch, values.Zoom);
+    }
+
+    public void SetOrbit(float yaw, float pitch, float zoom)
+    {
+        _renderer.SetOrbit(yaw, pitch, zoom);
+        OrbitChanged?.Invoke(this, GetOrbit());
+        _gl.Invalidate();
+    }
+
+    public void ResetOrbit()
+    {
+        _renderer.ResetOrbit();
+        _panX = _panY = 0;
+        OrbitChanged?.Invoke(this, GetOrbit());
+        _gl.Invalidate();
+    }
 
     public event EventHandler<ScenePart>? PartPicked;
     public event EventHandler<ScenePart>? PartMoved;
@@ -104,7 +147,7 @@ public sealed class ViewerControl : UserControl
                 _suppressNextClick = false;
                 return;
             }
-            if (e.Button != MouseButtons.Left || _movingPart != null ||
+            if (_threeDMode || e.Button != MouseButtons.Left || _movingPart != null ||
                 _session is null || _player is null)
                 return;
 
@@ -120,6 +163,25 @@ public sealed class ViewerControl : UserControl
 
         _gl.MouseDown += (_, e) =>
         {
+            if (_threeDMode && (e.Button == MouseButtons.Left || e.Button == MouseButtons.Right))
+            {
+                _gl.Focus();
+                if (e.Button == MouseButtons.Left)
+                {
+                    _orbitDragging = true;
+                    _orbitDragStart = e.Location;
+                    _orbitDragBase = GetOrbit();
+                }
+                else
+                {
+                    _orbitPanning = true;
+                    _panDragStart = e.Location;
+                    _panXBase = _panX;
+                    _panYBase = _panY;
+                }
+                _gl.Capture = true;
+                return;
+            }
             if (_movingPart is null)
             {
                 _suppressNextClick = false;
@@ -152,6 +214,23 @@ public sealed class ViewerControl : UserControl
         };
         _gl.MouseMove += (_, e) =>
         {
+            if (_threeDMode && _orbitDragging && (e.Button & MouseButtons.Left) != 0)
+            {
+                var dx = e.X - _orbitDragStart.X;
+                var dy = e.Y - _orbitDragStart.Y;
+                SetOrbit(_orbitDragBase.Yaw + dx * 0.45f,
+                         _orbitDragBase.Pitch - dy * 0.45f,
+                         _orbitDragBase.Zoom);
+                return;
+            }
+            if (_threeDMode && _orbitPanning && (e.Button & MouseButtons.Right) != 0)
+            {
+                _panX = _panXBase - (e.X - _panDragStart.X) / (float)Math.Max(1, _gl.Width) * 2;
+                _panY = _panYBase + (e.Y - _panDragStart.Y) / (float)Math.Max(1, _gl.Height) * 2;
+                _renderer.SetOrbitPan(_panX, _panY);
+                _gl.Invalidate();
+                return;
+            }
             if (_cameraDragging && _cameraStart != null &&
                 (e.Button & MouseButtons.Left) != 0)
             {
@@ -190,6 +269,12 @@ public sealed class ViewerControl : UserControl
         };
         _gl.MouseUp += (_, e) =>
         {
+            if (_threeDMode && (_orbitDragging || _orbitPanning))
+            {
+                _orbitDragging = _orbitPanning = false;
+                _gl.Capture = false;
+                return;
+            }
             if (e.Button == MouseButtons.Left && _cameraDragging)
             {
                 _cameraDragging = false;
@@ -237,6 +322,13 @@ public sealed class ViewerControl : UserControl
         };
         _gl.MouseWheel += (_, e) =>
         {
+            if (_threeDMode && _session is not null && e.Delta != 0)
+            {
+                var angle = GetOrbit();
+                SetOrbit(angle.Yaw, angle.Pitch,
+                    angle.Zoom * (float)Math.Pow(1.12, e.Delta / 120.0));
+                return;
+            }
             if (!_freeCameraEnabled || _session is null || e.Delta == 0)
                 return;
 
@@ -288,6 +380,8 @@ public sealed class ViewerControl : UserControl
         _session = session;
         _player = player;
         _renderer.SetScene(session, player);
+        if (_threeDMode)
+            _renderer.SetThreeDMode(true);
         if (_freeCameraEnabled)
             _renderer.CaptureFramingReference();
         _overlay.Text = $"{Path.GetFileName(session.FilePath)}  |  {session.Parts.Count} parts  |  {session.Animations.Count} animations";
@@ -368,6 +462,7 @@ public sealed class ViewerControl : UserControl
 
         var framebuffer = GL.GenFramebuffer();
         var colorTexture = GL.GenTexture();
+        var depthBuffer = GL.GenRenderbuffer();
 
         try
         {
@@ -402,6 +497,15 @@ public sealed class ViewerControl : UserControl
                 TextureTarget.Texture2D,
                 colorTexture,
                 0);
+
+            // 3D exports require their own depth attachment (the window has one).
+            GL.BindRenderbuffer(RenderbufferTarget.Renderbuffer, depthBuffer);
+            GL.RenderbufferStorage(RenderbufferTarget.Renderbuffer,
+                RenderbufferStorage.DepthComponent24, width, height);
+            GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer,
+                FramebufferAttachment.DepthAttachment,
+                RenderbufferTarget.Renderbuffer, depthBuffer);
+            GL.BindRenderbuffer(RenderbufferTarget.Renderbuffer, 0);
 
             var status = GL.CheckFramebufferStatus(
                 FramebufferTarget.Framebuffer);
@@ -438,6 +542,7 @@ public sealed class ViewerControl : UserControl
             GL.BindTexture(TextureTarget.Texture2D, 0);
             GL.DeleteFramebuffer(framebuffer);
             GL.DeleteTexture(colorTexture);
+            GL.DeleteRenderbuffer(depthBuffer);
 
             GL.Viewport(
                 0,

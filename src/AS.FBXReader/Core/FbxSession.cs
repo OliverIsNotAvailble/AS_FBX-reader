@@ -125,10 +125,29 @@ public sealed class FbxSession : IDisposable
         if (string.IsNullOrWhiteSpace(raw))
             return string.Empty;
 
-        if (Path.IsPathRooted(raw))
-            return raw;
+        var root = Path.GetDirectoryName(FilePath)!;
+        var preferred = Path.IsPathRooted(raw)
+            ? raw
+            : Path.GetFullPath(Path.Combine(root, raw));
+        if (File.Exists(preferred))
+            return preferred;
 
-        return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(FilePath)!, raw));
+        // FBXs from games often reference "textures/name.png" although
+        // AssetStudio leaves the exported texture beside the model.
+        // Keep the user's directory layout intact and try common locations.
+        var textureName = Path.GetFileName(raw);
+        foreach (var option in new[]
+        {
+            Path.Combine(root, textureName),
+            Path.Combine(root, "textures", textureName),
+            Path.Combine(root, "Textures", textureName)
+        })
+        {
+            if (File.Exists(option))
+                return option;
+        }
+
+        return preferred;
     }
 
     private static void EnsureAssimpLoadedFromAnsiSafePath()
