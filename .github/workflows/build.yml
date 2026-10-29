@@ -2,7 +2,7 @@ name: build
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, '3D' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -19,3 +19,10 @@ jobs:
         run: dotnet restore .\AS_FBX-reader.sln
       - name: Build
         run: dotnet build .\AS_FBX-reader.sln -c Release --no-restore
+      - name: Upload Windows 3D preview
+        if: github.ref == 'refs/heads/3D'
+        uses: actions/upload-artifact@v4
+        with:
+          name: AS_FBX-reader-3D-Windows
+          path: src/AS.FBXReader/bin/Release/net9.0-windows/
+          if-no-files-found: error

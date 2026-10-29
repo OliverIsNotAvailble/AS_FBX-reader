@@ -11,7 +11,7 @@
 - Resolved diffuse-texture path more flexibly for FBXs whose referenced `textures/name.png` was exported beside the `.fbx`. No texture relocation or writes.
 - Modified: `SceneRenderer.cs`, `ViewerControl.cs`, `MainForm.cs`, `FbxSession.cs`, `AS.FBXReader.csproj`. Added: `ThreeDViewerForm.cs`, `OrbitSphereControl.cs`. This changelog updated in the same commit; README not modified.
 - Known limits: first 3D preview/prototype; some transparent textured surfaces may require per-material sorting, and unusual FBX rig conventions may need camera-axis adjustments. No Blender-like bone pose editing, no real-time PBR materials or environment maps.
-- Verification: .NET 9 Windows compile pending and actual FBX/PNG visual inspection on the user's Windows GPU required.
+- Verification: .NET 9 Windows compile pending and actual FBX/PNG visual inspection on the user's Windows GPU required. Windows CI now builds the `3D` branch and publishes a runnable Windows build artifact; workflow changed only in this branch.
 
 
 Keep this file updated whenever the reader changes. Record the behavior, files,
