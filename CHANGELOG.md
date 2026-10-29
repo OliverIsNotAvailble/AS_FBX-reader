@@ -9,7 +9,7 @@
 - Inspected the **user-provided 101.fbx**, an actual FBX 7.3 binary (not uploaded to GitHub): 10 AnimStacks, 182 Model nodes, 51 geometry objects and thousands of curves. The first `ANG1 (Emotion)` stack targets **only five face parts** (BLW_ANG, EB_L, EB_R, EL_ANG, FaceB_ANG); a T-pose in the body when choosing this facial-only motion is therefore expected. `Idle_A` drives 66 model/bone nodes, and other attacks/poses drive broad skeleton movement. The viewer now defaults to `Idle_A` when present (or the first available Idle), starts playback, and displays an informative hint when a named Emotion clip is chosen.
 - The main preview now uses exactly the same 3D pipeline as the formerly working detached preview, addressing the front face disappearing in the old 2D painter-order view.
 - Version: 0.3.1-3d-preview.2, branch `3D` only. Modified `MainForm.cs`, `ViewerControl.cs`, `VisibilityProfile.cs`, project version and this changelog. Removed obsolete `ThreeDViewerForm.cs`. `main` and README remain unchanged.
-- Verification: Windows .NET 9 build pending; test the model and PNG on a real Windows GPU. Motion details for specific files depend on authored FBX channels, and advanced constraints/IK are outside the initial read-only pose viewer.
+- Verification: **Windows .NET 9 Release build PASSED** and Windows executable artifact uploaded (AS_FBX-reader-3D-Windows, artifact ID `12929155530`): https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/40944412023. Preview rendering, textured face, camera orbit controls and PNG alpha export still require interactive visual checks with the user's real GPU. FBX IK/constraint evaluation remains outside the initial read-only viewer.
 
 
 ## 0.3.0-3d-preview.1 — branch `3D` — 2026-10-29
