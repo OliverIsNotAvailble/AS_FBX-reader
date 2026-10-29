@@ -216,10 +216,10 @@ public sealed class ViewerControl : UserControl
         {
             if (_threeDMode && _orbitDragging && (e.Button & MouseButtons.Left) != 0)
             {
-                var dx = e.X - _orbitDragStart.X;
-                var dy = e.Y - _orbitDragStart.Y;
-                SetOrbit(_orbitDragBase.Yaw + dx * 0.45f,
-                         _orbitDragBase.Pitch - dy * 0.45f,
+                var orbitDx = e.X - _orbitDragStart.X;
+                var orbitDy = e.Y - _orbitDragStart.Y;
+                SetOrbit(_orbitDragBase.Yaw + orbitDx * 0.45f,
+                         _orbitDragBase.Pitch - orbitDy * 0.45f,
                          _orbitDragBase.Zoom);
                 return;
             }
