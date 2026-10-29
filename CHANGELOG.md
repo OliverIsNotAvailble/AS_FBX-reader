@@ -11,7 +11,7 @@
 - Resolved diffuse-texture path more flexibly for FBXs whose referenced `textures/name.png` was exported beside the `.fbx`. No texture relocation or writes.
 - Modified: `SceneRenderer.cs`, `ViewerControl.cs`, `MainForm.cs`, `FbxSession.cs`, `AS.FBXReader.csproj`. Added: `ThreeDViewerForm.cs`, `OrbitSphereControl.cs`. This changelog updated in the same commit; README not modified.
 - Known limits: first 3D preview/prototype; some transparent textured surfaces may require per-material sorting, and unusual FBX rig conventions may need camera-axis adjustments. No Blender-like bone pose editing, no real-time PBR materials or environment maps.
-- Verification: .NET 9 Windows compile pending and actual FBX/PNG visual inspection on the user's Windows GPU required. Windows CI builds the `3D` branch and publishes a runnable Windows build artifact. Initial Windows build found two CS0136 local-scope name collisions in the orbit mouse handler; renamed to `orbitDx`/`orbitDy` and reran CI. Workflow changed only in this branch.
+- Verification: .NET 9 Windows **build passed** on the `3D` branch, including the new form, orbit sphere and OpenGL changes: https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/40942111145. CI published artifact **AS_FBX-reader-3D-Windows** (artifact ID `12926109864`, approximately 6.7 MB). First CI run had two CS0136 local-name collisions in camera drag; fixed in the successful second run. Actual model visuals, camera gestures and RGBA PNG need user GPU testing. Workflow changed only in this branch.
 
 
 Keep this file updated whenever the reader changes. Record the behavior, files,
