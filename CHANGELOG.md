@@ -1,5 +1,17 @@
 # AS_FBX-reader changelog
 
+## 0.3.1-3d-preview.2 — branch `3D` — 2026-10-29
+
+- **Reworked 3D into the MAIN viewport** based on user testing of 0.3.0. The first implementation opened a separate modal window, leaving the main preview in old 2D XY painter mode. That caused different appearance (missing face) and independent camera positions between main preview and PNG output. The modal window and its redundant ViewerControl/AnimationPlayer were removed from the workflow and source; the main `ViewerControl` now starts in 3D perspective + depth testing for this branch.
+- Added a fixed right-hand **3D Camera** column to the main window with a clickable/dragged X/Y/Z orientation sphere, Front/Back/Left/Right/Top/Bottom preset buttons, live yaw/pitch/zoom numeric inputs, Reset 3D camera and transparent PNG output dimensions. Main 3D viewport remains center and resizes dynamically; original mesh list remains left. Left-drag the main 3D view to orbit, right-drag to pan, mouse wheel to zoom.
+- Replaced the main toolbar's `Export / Framing` and `3D Viewer / PNG` with **Export PNG (current pose)**. This button (and the sidebar EXPORT PNG) capture the **same main OpenGL scene**, camera and current frame without launching a second viewport or changing FBX/model/texture files. Export uses an offscreen framebuffer with a depth attachment, preserves/returns the prior preview background and playback state, and writes RGBA PNG.
+- Saved 3D yaw/pitch/zoom and camera pan in the existing profile JSON using nullable `OrbitYaw`, `OrbitPitch`, `OrbitZoom`, `OrbitPanX`, `OrbitPanY` fields; restores them on Load Profile. Prior profiles without these fields remain compatible. Reloading a model resets the orbit to its default.
+- Inspected the **user-provided 101.fbx**, an actual FBX 7.3 binary (not uploaded to GitHub): 10 AnimStacks, 182 Model nodes, 51 geometry objects and thousands of curves. The first `ANG1 (Emotion)` stack targets **only five face parts** (BLW_ANG, EB_L, EB_R, EL_ANG, FaceB_ANG); a T-pose in the body when choosing this facial-only motion is therefore expected. `Idle_A` drives 66 model/bone nodes, and other attacks/poses drive broad skeleton movement. The viewer now defaults to `Idle_A` when present (or the first available Idle), starts playback, and displays an informative hint when a named Emotion clip is chosen.
+- The main preview now uses exactly the same 3D pipeline as the formerly working detached preview, addressing the front face disappearing in the old 2D painter-order view.
+- Version: 0.3.1-3d-preview.2, branch `3D` only. Modified `MainForm.cs`, `ViewerControl.cs`, `VisibilityProfile.cs`, project version and this changelog. Removed obsolete `ThreeDViewerForm.cs`. `main` and README remain unchanged.
+- Verification: Windows .NET 9 build pending; test the model and PNG on a real Windows GPU. Motion details for specific files depend on authored FBX channels, and advanced constraints/IK are outside the initial read-only pose viewer.
+
+
 ## 0.3.0-3d-preview.1 — branch `3D` — 2026-10-29
 
 - **Experimental separate 3D viewing and 2D snapshot export** based on `main` 0.2.3. This work lives exclusively on branch `3D`; `main` and the existing 2D editor/exporter remain unchanged.

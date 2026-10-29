@@ -7,6 +7,14 @@ public sealed class VisibilityProfile
 {
     public string SourceFbx { get; set; } = string.Empty;
     public string? Animation { get; set; }
+
+    // Only used by branch 3D: the main viewport's orbit is the single
+    // source of truth for previews, PNG exports and saved profiles.
+    public float? OrbitYaw { get; set; }
+    public float? OrbitPitch { get; set; }
+    public float? OrbitZoom { get; set; }
+    public float? OrbitPanX { get; set; }
+    public float? OrbitPanY { get; set; }
     public List<string> HiddenPartIds { get; set; } = new();
     // Parts removed from active scene; the FBX file itself is never changed.
     public List<string> ExcludedPartIds { get; set; } = new();

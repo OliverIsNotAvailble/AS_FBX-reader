@@ -10,6 +10,13 @@ public sealed class MainForm : Form
     private readonly FbxSession _session = new();
     private readonly AnimationPlayer _player;
     private readonly ViewerControl _viewer = new();
+    private readonly OrbitSphereControl _orbitSphere = new();
+    private readonly NumericUpDown _orbitYaw = CameraNumber(-360, 360, 25, 1);
+    private readonly NumericUpDown _orbitPitch = CameraNumber(-85, 85, 12, 1);
+    private readonly NumericUpDown _orbitZoom = CameraNumber(0.1m, 20m, 1m, 0.1m);
+    private readonly NumericUpDown _pngWidth = CameraNumber(64, 4096, 2048, 64);
+    private readonly NumericUpDown _pngHeight = CameraNumber(64, 4096, 2048, 64);
+    private bool _updatingOrbit;
 
     // V0.1.6: real hierarchical organizer instead of a flat CheckedListBox.
     // Tree order is authoritative for painter/layer order: TOP = FRONT.
@@ -46,7 +53,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 3D Preview 0.3.0";
+        Text = "AS_FBX-reader 3D Preview 0.3.1 — Main viewport";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -57,6 +64,9 @@ public sealed class MainForm : Form
 
         _groupFont = new Font(Font, FontStyle.Bold);
 
+        // The MAIN viewport is always 3D on this experimental branch.
+        // No extra editor/camera instance; all captures use this exact scene.
+        _viewer.Enable3DMode();
         BuildUi();
         HookEvents();
         _timer.Start();
@@ -84,15 +94,7 @@ public sealed class MainForm : Form
         });
         var saveProfile = Button("Save profile", (_, _) => SaveProfile());
         var loadProfile = Button("Load profile", (_, _) => LoadProfile());
-        var export = Button("Export / Framing", (_, _) => OpenExportDialog());
-        var freeCamera = new CheckBox
-        {
-            Text = "Free camera",
-            AutoSize = true,
-            Padding = new Padding(8, 9, 6, 0),
-            Margin = new Padding(6, 3, 3, 3)
-        };
-        freeCamera.CheckedChanged += (_, _) => _viewer.FreeCameraEnabled = freeCamera.Checked;
+        var export = Button("Export PNG (current pose)", (_, _) => ExportPngFromMain());
 
         var pma = new CheckBox
         {
@@ -130,8 +132,7 @@ public sealed class MainForm : Form
             saveProfile,
             loadProfile,
             export,
-            Button("3D Viewer / PNG", (_, _) => OpenThreeDDialog()),
-            freeCamera,
+            Button("Reset 3D camera", (_, _) => _viewer.ResetOrbit()),
             pma,
             Button("Allow all", (_, _) => SetAll(true)),
             Button("Hide all", (_, _) => SetAll(false)),
@@ -139,7 +140,12 @@ public sealed class MainForm : Form
             Button("Solo", (_, _) => SoloSelected()),
             Button("New group", (_, _) => CreateRootGroup())
         ]);
-        toolbar.Controls.Add(Button("Fit view", (_, _) => _viewer.ResetFraming()));
+        toolbar.Controls.Add(new Label
+        {
+            Text = "  Left-drag: orbit  •  Right-drag: pan  •  Wheel: zoom",
+            AutoSize = true,
+            Padding = new Padding(6, 12, 2, 0)
+        });
 
         var split = new SplitContainer
         {
@@ -152,7 +158,22 @@ public sealed class MainForm : Form
         ConfigurePartsTree();
 
         split.Panel1.Controls.Add(_parts);
-        split.Panel2.Controls.Add(_viewer);
+
+        // Keep all manipulation IN the main window. The right-side camera
+        // panel is fixed-width, but the OpenGL preview fills the remaining
+        // space. No second rendering context/scene diverges from the export.
+        var cameraLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 1, ColumnCount = 2,
+            Margin = Padding.Empty
+        };
+        cameraLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        cameraLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300f));
+        _viewer.Margin = Padding.Empty;
+        cameraLayout.Controls.Add(_viewer, 0, 0);
+        cameraLayout.Controls.Add(BuildCameraPanel(), 1, 0);
+        split.Panel2.Controls.Add(cameraLayout);
 
         _timeline.Dock = DockStyle.Bottom;
         _timeline.AutoSize = true;
@@ -487,6 +508,18 @@ public sealed class MainForm : Form
             }
         };
 
+        _viewer.OrbitChanged += (_, orbit) => SyncOrbitControls(orbit);
+        _orbitSphere.AnglesChanged += (yaw, pitch) =>
+            _viewer.SetOrbit(yaw, pitch, _viewer.GetOrbit().Zoom);
+        foreach (var control in new[] { _orbitYaw, _orbitPitch, _orbitZoom })
+            control.ValueChanged += (_, _) =>
+            {
+                if (!_updatingOrbit)
+                    _viewer.SetOrbit((float)_orbitYaw.Value,
+                        (float)_orbitPitch.Value, (float)_orbitZoom.Value);
+            };
+        SyncOrbitControls(_viewer.GetOrbit());
+
         _viewer.PartPicked += (_, part) =>
         {
             var node = FindPartNode(part);
@@ -513,6 +546,8 @@ public sealed class MainForm : Form
                 _player.SelectAnimation(take.Index);
                 _timeline.Value = 0;
                 _viewer.InvalidateScene();
+                if (take.Name.Contains("(Emotion)", StringComparison.OrdinalIgnoreCase))
+                    _status.Text = $"{take.Name}: facial expression clip; body may remain in T-pose. Select Idle_A, Atk1, etc. for full-body movement.";
             }
         };
 
@@ -772,7 +807,19 @@ public sealed class MainForm : Form
                 _animations.Items.Add(animation);
 
             if (_animations.Items.Count > 0)
-                _animations.SelectedIndex = 0;
+            {
+                // 101.fbx has separate facial-only motions (e.g. ANG1
+                // Emotion) which legitimately leave the BODY in T-pose.
+                // Prefer a full-body Idle clip for the first preview.
+                var idle = _session.Animations.FindIndex(a =>
+                    a.Name.Equals("Idle_A", StringComparison.OrdinalIgnoreCase));
+                if (idle < 0)
+                    idle = _session.Animations.FindIndex(a =>
+                        a.Name.StartsWith("Idle", StringComparison.OrdinalIgnoreCase));
+                _animations.SelectedIndex = idle >= 0 ? idle : 0;
+                _player.Playing = true;
+            }
+            _viewer.ResetOrbit();
 
             var duplicateNote = _session.DuplicateModelNamesFixed > 0
                 ? $" | {_session.DuplicateModelNamesFixed} duplicate FBX Model names isolated"
@@ -786,7 +833,8 @@ public sealed class MainForm : Form
 
             _status.Text =
                 $"{Path.GetFileName(dialog.FileName)} | {_session.Parts.Count} parts | " +
-                $"{_session.Animations.Count} animations{duplicateNote}{scaleNote}{bindNote} | drag parts into groups";
+                $"{_session.Animations.Count} animations{duplicateNote}{scaleNote}{bindNote} | " +
+                "3D viewport: drag to orbit, right-drag to pan, wheel to zoom";
         }
         catch (Exception ex)
         {
@@ -1633,6 +1681,11 @@ public sealed class MainForm : Form
         {
             SourceFbx = Path.GetFileName(_session.FilePath),
             Animation = (_animations.SelectedItem as AnimationTake)?.Name,
+            OrbitYaw = _viewer.GetOrbit().Yaw,
+            OrbitPitch = _viewer.GetOrbit().Pitch,
+            OrbitZoom = _viewer.GetOrbit().Zoom,
+            OrbitPanX = _viewer.GetOrbitPan().X,
+            OrbitPanY = _viewer.GetOrbitPan().Y,
             ExcludedPartIds = _excludedPartIds.OrderBy(x => x, StringComparer.Ordinal).ToList(),
             ClonedParts = _session.Parts
                 .Where(p => !string.IsNullOrWhiteSpace(p.SourcePartId) &&
@@ -1744,6 +1797,12 @@ public sealed class MainForm : Form
             return;
 
         var profile = VisibilityProfile.Load(dialog.FileName);
+
+        if (profile.OrbitYaw.HasValue && profile.OrbitPitch.HasValue)
+            _viewer.SetOrbit(profile.OrbitYaw.Value, profile.OrbitPitch.Value,
+                profile.OrbitZoom.GetValueOrDefault(1f));
+        if (profile.OrbitPanX.HasValue && profile.OrbitPanY.HasValue)
+            _viewer.SetOrbitPan(profile.OrbitPanX.Value, profile.OrbitPanY.Value);
 
         // Restore all imported parts before applying exclusions from this
         // profile, so loading another profile can bring old parts back.
@@ -2044,19 +2103,189 @@ public sealed class MainForm : Form
         _viewer.InvalidateScene();
     }
 
-    private void OpenThreeDDialog()
+
+    private static NumericUpDown CameraNumber(
+        decimal minimum, decimal maximum, decimal initial, decimal increment)
+        => new()
+        {
+            Minimum = minimum, Maximum = maximum, Value = initial,
+            Increment = increment, DecimalPlaces = increment < 1 ? 2 : 0,
+            Width = 105, TextAlign = HorizontalAlignment.Center
+        };
+
+    private Control BuildCameraPanel()
+    {
+        var scroller = new Panel
+        {
+            Dock = DockStyle.Fill, AutoScroll = true,
+            BackColor = Color.FromArgb(39, 44, 54),
+            ForeColor = Color.White
+        };
+        var grid = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            ColumnCount = 1, RowCount = 0,
+            AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(8, 8, 8, 16),
+            BackColor = scroller.BackColor
+        };
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        void Add(Control control, int height)
+        {
+            control.Dock = DockStyle.Fill;
+            control.Margin = new Padding(3, 4, 3, 4);
+            control.Height = height;
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, height + 8));
+            grid.Controls.Add(control, 0, grid.RowCount++);
+        }
+
+        Label Caption(string label) => new()
+        {
+            Text = label,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = Color.White,
+            Font = new Font(Font, FontStyle.Bold)
+        };
+
+        Control Field(string label, NumericUpDown number)
+        {
+            var table = new TableLayoutPanel
+            {
+                ColumnCount = 2, RowCount = 1,
+                BackColor = scroller.BackColor
+            };
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            table.Controls.Add(new Label
+            {
+                Text = label, Dock = DockStyle.Fill,
+                ForeColor = Color.White,
+                TextAlign = ContentAlignment.MiddleLeft
+            }, 0, 0);
+            number.Dock = DockStyle.Fill;
+            table.Controls.Add(number, 1, 0);
+            return table;
+        }
+
+        Add(Caption("3D CAMERA — IN MAIN VIEWPORT"), 30);
+        _orbitSphere.MinimumSize = new Size(0, 0);
+        Add(_orbitSphere, 228);
+
+        var presets = new TableLayoutPanel { ColumnCount = 3, RowCount = 2 };
+        for (var i = 0; i < 3; i++)
+            presets.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 3f));
+        for (var i = 0; i < 2; i++)
+            presets.RowStyles.Add(new RowStyle(SizeType.Percent, 50f));
+
+        var views = new (string Text, float Yaw, float Pitch)[]
+        {
+            ("Front", 0, 0), ("Back", 180, 0), ("Right", 90, 0),
+            ("Left", -90, 0), ("Top", 0, 85), ("Bottom", 0, -85)
+        };
+        for (var i = 0; i < views.Length; i++)
+        {
+            var entry = views[i];
+            var button = Button(entry.Text, (_, _) =>
+                _viewer.SetOrbit(entry.Yaw, entry.Pitch, _viewer.GetOrbit().Zoom));
+            button.MinimumSize = Size.Empty;
+            button.Dock = DockStyle.Fill;
+            button.Margin = new Padding(2);
+            presets.Controls.Add(button, i % 3, i / 3);
+        }
+        Add(presets, 87);
+
+        Add(Caption("Rotation / Camera"), 32);
+        Add(Field("Yaw (°)", _orbitYaw), 36);
+        Add(Field("Pitch (°)", _orbitPitch), 36);
+        Add(Field("Zoom", _orbitZoom), 36);
+        var reset = Button("Reset 3D camera", (_, _) => _viewer.ResetOrbit());
+        Add(reset, 40);
+
+        Add(Caption("2D PNG — CURRENT POSE"), 35);
+        Add(Field("Width", _pngWidth), 36);
+        Add(Field("Height", _pngHeight), 36);
+        var export = Button("EXPORT PNG (RGBA)", (_, _) => ExportPngFromMain());
+        export.BackColor = Color.FromArgb(35, 104, 159);
+        export.ForeColor = Color.White;
+        Add(export, 50);
+
+        Add(new Label
+        {
+            Text = "Left-drag: orbit  •  Right-drag: pan\r\n" +
+                   "Mouse wheel: zoom. Export uses this view.",
+            ForeColor = Color.LightGray,
+            AutoSize = false
+        }, 54);
+
+        scroller.Controls.Add(grid);
+        return scroller;
+    }
+
+    private void SyncOrbitControls(OrbitAngles orbit)
+    {
+        _updatingOrbit = true;
+        try
+        {
+            _orbitYaw.Value = Math.Clamp((decimal)orbit.Yaw,
+                _orbitYaw.Minimum, _orbitYaw.Maximum);
+            _orbitPitch.Value = Math.Clamp((decimal)orbit.Pitch,
+                _orbitPitch.Minimum, _orbitPitch.Maximum);
+            _orbitZoom.Value = Math.Clamp((decimal)orbit.Zoom,
+                _orbitZoom.Minimum, _orbitZoom.Maximum);
+            _orbitSphere.SetAngles(orbit.Yaw, orbit.Pitch);
+        }
+        finally { _updatingOrbit = false; }
+    }
+
+    private void ExportPngFromMain()
     {
         if (_session.Scene is null)
         {
-            MessageBox.Show(this, "Open an FBX first, then open the 3D viewer.",
-                "3D Viewer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "Open an FBX before exporting.");
             return;
         }
 
-        _player.Playing = false;
-        using var dialog = new ThreeDViewerForm(_session);
-        dialog.ShowDialog(this);
-        _viewer.InvalidateScene();
+        var name = Path.GetFileNameWithoutExtension(_session.FilePath);
+        var take = _player.CurrentAnimationName ?? "Rest";
+        var safeTake = string.Concat(take.Select(c =>
+            Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+        using var dialog = new SaveFileDialog
+        {
+            Filter = "Transparent PNG (*.png)|*.png",
+            Title = "Export this 3D camera view as a flat transparent PNG",
+            FileName = $"{name}_{safeTake}_{_player.TimeSeconds:0.00}s.png"
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        var playing = _player.Playing;
+        var transparent = _viewer.TransparentBackground;
+        var background = _viewer.BackgroundColor;
+        try
+        {
+            UseWaitCursor = true;
+            _player.Playing = false;
+            _viewer.SetBackground(true, Color.Black);
+            var image = _viewer.CaptureFramePixels(
+                (int)_pngWidth.Value, (int)_pngHeight.Value);
+            ViewerControl.SavePngFrame(image, dialog.FileName);
+            _status.Text = $"PNG exported: {dialog.FileName}  |  " +
+                $"camera yaw {_viewer.GetOrbit().Yaw:0.#}°, " +
+                $"pitch {_viewer.GetOrbit().Pitch:0.#}°";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.ToString(), "PNG export failed",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            _viewer.SetBackground(transparent, background);
+            _player.Playing = playing;
+            UseWaitCursor = false;
+            _viewer.InvalidateScene();
+        }
     }
 
     private static Button Button(string text, EventHandler click)

@@ -66,6 +66,16 @@ public sealed class ViewerControl : UserControl
         _gl.Invalidate();
     }
 
+    public (float X, float Y) GetOrbitPan() => (_panX, _panY);
+
+    public void SetOrbitPan(float x, float y)
+    {
+        _panX = Math.Clamp(x, -10f, 10f);
+        _panY = Math.Clamp(y, -10f, 10f);
+        _renderer.SetOrbitPan(_panX, _panY);
+        _gl.Invalidate();
+    }
+
     public void ResetOrbit()
     {
         _renderer.ResetOrbit();
