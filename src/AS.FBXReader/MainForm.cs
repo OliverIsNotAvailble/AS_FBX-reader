@@ -807,9 +807,12 @@ public sealed partial class MainForm : Form
         var scaleNote = _player.RestoredCollapsedMeshes > 0
             ? $" | {_player.RestoredCollapsedMeshes} zero-scale meshes restored"
             : string.Empty;
+        var ancestorNote = _player.RestoredCollapsedAncestors > 0
+            ? $" | {_player.RestoredCollapsedAncestors} zero-scale parent(s) restored"
+            : string.Empty;
 
         _status.Text = $"{Path.GetFileName(path)} | {_session.Parts.Count} parts | " +
-            $"{_session.Animations.Count} animations{duplicateNote}{scaleNote}{bindNote} | " +
+            $"{_session.Animations.Count} animations{duplicateNote}{scaleNote}{ancestorNote}{bindNote} | " +
             "VLote: preview principal, _EXT, _OK / _Null";
     }
 
