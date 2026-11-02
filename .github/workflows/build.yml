@@ -19,6 +19,9 @@ jobs:
         run: dotnet restore .\AS_FBX-reader.sln
       - name: Build
         run: dotnet build .\AS_FBX-reader.sln -c Release --no-restore
+      - name: VLote folder-sorting smoke tests
+        if: github.ref == 'refs/heads/VLote'
+        run: dotnet run --project .\tests\VLoteSmoke\VLoteSmoke.csproj -c Release
       - name: Upload VLote Windows build
         if: github.ref == 'refs/heads/VLote'
         uses: actions/upload-artifact@v4

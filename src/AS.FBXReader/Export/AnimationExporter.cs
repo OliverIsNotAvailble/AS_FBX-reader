@@ -66,7 +66,12 @@ public sealed class AnimationExporter
 
         var psi = new System.Diagnostics.ProcessStartInfo
         {
-            FileName = "ffmpeg",
+            // Use the program's folder or the user's common Windows
+            // installation before falling back to ffmpeg from PATH.
+            FileName = File.Exists(Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe"))
+                ? Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe")
+                : File.Exists(@"C:\ffmpeg\bin\ffmpeg.exe")
+                    ? @"C:\ffmpeg\bin\ffmpeg.exe" : "ffmpeg",
             Arguments = "-hide_banner -loglevel error -nostats " + args,
             UseShellExecute = false,
             RedirectStandardError = true,
