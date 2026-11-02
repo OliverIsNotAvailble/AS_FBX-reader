@@ -46,15 +46,25 @@ public sealed class ExportDialog : Form
     private bool _syncingResolution;
     private bool _syncingCamera;
     private bool _exporting;
+    private readonly FramingState? _initialFraming;
+
+    public int OutputWidth => (int)_width.Value;
+    public int OutputHeight => (int)_height.Value;
+    public FramingState OutputFraming => _preview.GetFraming();
+
     private bool BatchExport => _allAnimations.Checked || _selectedAnimations.Checked;
 
     public ExportDialog(
         FbxSession session,
         AnimationPlayer player,
-        bool premultiplyAlpha)
+        bool premultiplyAlpha,
+        int initialWidth = 2048,
+        int initialHeight = 2048,
+        FramingState? initialFraming = null)
     {
         _session = session;
         _player = player;
+        _initialFraming = initialFraming?.Clone();
 
         _originalAnimationIndex = player.AnimationIndex;
         _originalTime = player.TimeSeconds;
@@ -71,6 +81,11 @@ public sealed class ExportDialog : Form
         Font = new Font("Segoe UI", 10.5F);
 
         BuildUi(premultiplyAlpha);
+        // Mirror the desired output format from the main viewport instead
+        // of always opening at the exporter's 2048x2048 preset.
+        _width.Value = Math.Clamp(initialWidth, (int)_width.Minimum, (int)_width.Maximum);
+        _height.Value = Math.Clamp(initialHeight, (int)_height.Minimum, (int)_height.Maximum);
+        _resolutionPreset.SelectedIndex = 6; // custom values, no events hooked yet
 
         // This is a second OpenGL viewer hosted by the export window. It must be
         // explicitly attached to the already-loaded FBX/session; otherwise it
@@ -85,7 +100,26 @@ public sealed class ExportDialog : Form
             BeginInvoke(new Action(() => UiLayout.OpenSidebar(_root, DeviceDpi)));
             _preview.SetPremultiplyAlpha(_pma.Checked);
             ApplyBackground();
-            ResetFraming();
+            if (_initialFraming?.Enabled == true)
+            {
+                // A camera adjusted in the MAIN preview stays identical here.
+                _preview.SetFraming(_initialFraming);
+                _syncingCamera = true;
+                try
+                {
+                    _zoom.Value = Math.Clamp((decimal)_initialFraming.Zoom * 100,
+                        _zoom.Minimum, _zoom.Maximum);
+                    _offsetX.Value = Math.Clamp((decimal)_initialFraming.OffsetX * 100,
+                        _offsetX.Minimum, _offsetX.Maximum);
+                    _offsetY.Value = Math.Clamp((decimal)_initialFraming.OffsetY * 100,
+                        _offsetY.Minimum, _offsetY.Maximum);
+                }
+                finally { _syncingCamera = false; }
+            }
+            else
+            {
+                ResetFraming();
+            }
             LayoutPreview();
         };
 

@@ -1,6 +1,7 @@
 using AS.FBXReader.Batch;
 using AS.FBXReader.Export;
 using AS.FBXReader.Models;
+using AS.FBXReader.Rendering;
 
 namespace AS.FBXReader;
 
@@ -41,6 +42,20 @@ public sealed partial class MainForm
     private bool _batchBusy;
     private bool _batchUpdatingFraming;
     private bool _batchUpdatingPma;
+
+    // One OpenGL viewer: the frame around it resizes to the ACTUAL export
+    // aspect ratio, while _viewer continues to render and capture normally.
+    private readonly Panel _outputPreviewHost = new()
+    {
+        Dock = DockStyle.Fill,
+        BackColor = Color.FromArgb(20, 25, 34)
+    };
+    private readonly Panel _outputPreviewFrame = new()
+    {
+        BackColor = Color.FromArgb(105, 168, 231),
+        Padding = new Padding(2)
+    };
+    private bool _exportPreviewPinned;
 
     private static NumericUpDown Number(int min, int max, int val) => new()
     {
@@ -289,6 +304,9 @@ public sealed partial class MainForm
             }
         };
         _batchScan.Click += (_, _) => ScanBatch();
+        _batchWidth.ValueChanged += (_, _) => LayoutMainPreview();
+        _batchHeight.ValueChanged += (_, _) => LayoutMainPreview();
+        _leftTabs.SelectedIndexChanged += (_, _) => LayoutMainPreview();
         _batchExport.Click += async (_, _) => await ExportBatchAsync();
         _batchNull.Click += (_, _) => MarkBatchNull();
         _batchCancel.Click += (_, _) => _batchCancellation?.Cancel();
@@ -324,6 +342,80 @@ public sealed partial class MainForm
         _batchCounterLabel.Text = "0 / 0";
         _batchMessage.Text = "Escolha a pasta raiz para iniciar.";
         return _leftTabs;
+    }
+
+    /// <summary>
+    /// Called when main editor is resized, when VLote/Meshes tab changes,
+    /// and whenever export Width/Height is edited. The content of the blue
+    /// frame has the SAME aspect ratio as the offscreen PNG/FFmpeg capture.
+    /// </summary>
+    private void LayoutMainPreview()
+    {
+        if (_outputPreviewHost.IsDisposed || _outputPreviewFrame.IsDisposed)
+            return;
+
+        bool showExportFrame = _leftTabs.SelectedTab == _batchTab || _exportPreviewPinned;
+        _outputPreviewFrame.SuspendLayout();
+        try
+        {
+            if (!showExportFrame)
+            {
+                // Preserve the original full-size viewer for Meshes mode,
+                // until an export format has explicitly been chosen.
+                _outputPreviewFrame.Padding = Padding.Empty;
+                _outputPreviewFrame.BackColor = _outputPreviewHost.BackColor;
+                _outputPreviewFrame.Bounds = _outputPreviewHost.ClientRectangle;
+            }
+            else
+            {
+                // 1024x1024 => square, 1920x1080 => 16:9,
+                // 720x1280 => portrait. Borders are outside the GL image.
+                var box = OutputAspectLayout.Fit(
+                    _outputPreviewHost.ClientSize,
+                    (int)_batchWidth.Value,
+                    (int)_batchHeight.Value);
+                if (box == Rectangle.Empty) return;
+                bool tiny = box.Size == _outputPreviewHost.ClientSize;
+                _outputPreviewFrame.Padding = tiny ? Padding.Empty : new Padding(2);
+                _outputPreviewFrame.BackColor = tiny
+                    ? _outputPreviewHost.BackColor
+                    : Color.FromArgb(105, 168, 231);
+                _outputPreviewFrame.Bounds = box;
+            }
+        }
+        finally
+        {
+            _outputPreviewFrame.ResumeLayout();
+        }
+        _viewer.InvalidateScene();
+    }
+
+    private void InitializeMainPreview()
+    {
+        _viewer.Dock = DockStyle.Fill;
+        _outputPreviewFrame.Controls.Add(_viewer);
+        _outputPreviewHost.Controls.Add(_outputPreviewFrame);
+        _outputPreviewHost.Resize += (_, _) => LayoutMainPreview();
+        _outputPreviewHost.HandleCreated += (_, _) => LayoutMainPreview();
+        LayoutMainPreview();
+    }
+
+    /// <summary>
+    /// Keep dimensions AND camera in the main viewer after the original
+    /// Export / Framing window closes, instead of reverting to a stretched
+    /// 16:9 editor canvas that doesn't match the export.
+    /// </summary>
+    private void UseExportDialogFraming(int width, int height, FramingState frame)
+    {
+        if (width < _batchWidth.Minimum || width > _batchWidth.Maximum ||
+            height < _batchHeight.Minimum || height > _batchHeight.Maximum)
+            return;
+        _batchWidth.Value = width;
+        _batchHeight.Value = height;
+        _exportPreviewPinned = true;
+        _viewer.SetFraming(frame);
+        SyncBatchFraming();
+        LayoutMainPreview();
     }
 
     private void SetSharedPma(bool enabled)

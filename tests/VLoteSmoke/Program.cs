@@ -1,4 +1,6 @@
 using AS.FBXReader.Batch;
+using AS.FBXReader.Rendering;
+using System.Drawing;
 
 static void Check(bool result, string description)
 {
@@ -72,6 +74,45 @@ try
         "existing destination folders are never overwritten");
     Check(File.Exists(Path.Combine(root, "root-only.fbx")), "root-level source remains untouched");
     Check(new VLoteQueue(root).Remaining == 0, "completed models are skipped on next scan");
+    // The main OpenGL preview content and the offscreen export must use
+    // the SAME aspect ratio; users can select square, landscape or portrait.
+    var host = new Size(1200, 700);
+    foreach (var (width, height, format) in new[]
+    {
+        (1024, 1024, "1:1 square"),
+        (1920, 1080, "16:9 landscape"),
+        (720, 1280, "9:16 portrait"),
+        (2048, 1536, "4:3 landscape"),
+        (1536, 2048, "3:4 portrait")
+    })
+    {
+        var box = OutputAspectLayout.Fit(host, width, height);
+        int insideW = box.Width - 4; // 2px border left and right
+        int insideH = box.Height - 4;
+        Check(box.Left >= 0 && box.Top >= 0 &&
+              box.Right <= host.Width && box.Bottom <= host.Height,
+              "preview fits host: " + format);
+        Check(insideW > 0 && insideH > 0 &&
+              Math.Abs(insideW / (double)insideH - width / (double)height) < .015,
+              "preview content matches export aspect: " + format);
+        Check(Math.Abs((box.Left + box.Right) / 2d - host.Width / 2d) <= 1 &&
+              Math.Abs((box.Top + box.Bottom) / 2d - host.Height / 2d) <= 1,
+              "preview is centered: " + format);
+    }
+
+    foreach (var small in new[] { new Size(20, 20), new Size(0, 0), new Size(640, 300) })
+    {
+        var rect = OutputAspectLayout.Fit(small, 1024, 1024);
+        Check(rect.Left >= 0 && rect.Top >= 0 &&
+              rect.Right <= small.Width && rect.Bottom <= small.Height,
+              "preview handles small/empty window " + small);
+    }
+    try
+    {
+        OutputAspectLayout.Fit(host, 0, 720);
+        throw new Exception("Zero-sized export resolution should be invalid.");
+    }
+    catch (ArgumentOutOfRangeException) { }
     Console.WriteLine("VLote smoke PASS.");
 }
 finally

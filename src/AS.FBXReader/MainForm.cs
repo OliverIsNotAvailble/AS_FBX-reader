@@ -46,7 +46,7 @@ public sealed partial class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.2.3 — VLote 0.2";
+        Text = "AS_FBX-reader 0.2.3 — VLote 0.3";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -163,7 +163,8 @@ public sealed partial class MainForm : Form
         _leftTabs.TabPages.Add(_batchTab);
         BuildBatchPanel();
         split.Panel1.Controls.Add(_leftTabs);
-        split.Panel2.Controls.Add(_viewer);
+        InitializeMainPreview();
+        split.Panel2.Controls.Add(_outputPreviewHost);
 
         _timeline.Dock = DockStyle.Bottom;
         _timeline.AutoSize = true;
@@ -2039,9 +2040,20 @@ public sealed partial class MainForm : Form
         using var dialog = new ExportDialog(
             _session,
             _player,
-            _viewer.PremultiplyAlpha);
+            _viewer.PremultiplyAlpha,
+            (int)_batchWidth.Value,
+            (int)_batchHeight.Value,
+            _viewer.GetFraming());
 
         dialog.ShowDialog(this);
+
+        // The same crop/aspect selected in the traditional exporter now
+        // becomes visible in the MAIN preview. The batch sidebar Width/
+        // Height is also synchronized for subsequent VLote exports.
+        UseExportDialogFraming(
+            dialog.OutputWidth,
+            dialog.OutputHeight,
+            dialog.OutputFraming);
 
         // ExportDialog restores the previous animation/time when it closes.
         // Keep the main animation selector visually in sync with the player.

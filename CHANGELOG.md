@@ -4,6 +4,16 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## VLote 0.3 — 2026-11-02 — exact output aspect in MAIN preview
+
+- Fixed a visible preview/export mismatch: the original editor used the full available window (often 16:9) even when the VLote output setting was 1024×1024 (1:1). `SceneRenderer.BuildView` uses the viewport's aspect ratio for camera projection, so objects could be positioned/framed differently in the final PNG/FFmpeg export.
+- The **MAIN OpenGL viewer** now sits inside a centered, thin blue-bordered export frame with letterboxing. In the `VLote` tab, this frame automatically follows **Largura / Altura** (square, landscape, portrait, or custom) in real time. The actual OpenGL viewport is fitted to the exact selected width:height proportion; the offscreen render continues using the full requested pixel resolution. The source model remains centered in the same framing, and mouse camera controls continue working inside the export frame.
+- Changing output format / size does **not** create a second preview or change any FBX data. Switching to `Meshes` keeps the legacy full-window viewer by default; after using the original `Export / Framing` dialog, the main viewer keeps the export frame aspect and camera to make its last chosen output settings visible.
+- The original `Export / Framing` window now **opens with the main viewer's current width, height and framing** rather than resetting unconditionally to its own 2048×2048 preset. Its selected output width, height and framing are returned to the main viewer when the dialog closes. VLote size inputs are kept in sync, so both exporters operate on the same apparent crop. Exporting with the original dialog still uses its own letterboxed export preview and existing export logic.
+- Added a pure `Rendering/OutputAspectLayout.cs` layout calculator that keeps the thin border *outside* the GL image. Includes handling for empty and very small temporary sizes during window resizing. Added smoke tests for square (1:1), wide (16:9), vertical (9:16), and 4:3/3:4 ratios, centered fitting and safe small-viewports.
+- Changed `MainForm.cs`, `VLoteMainForm.cs`, `ExportDialog.cs`, `AS.FBXReader.csproj`, `tests/VLoteSmoke/Program.cs`, the VLote GitHub Actions artifact name and this changelog. No README edit; `main` and the separate `3D` branch remain unchanged.
+- Verification: Windows .NET 9 build and frame-layout smoke tests pending; final look on the user's high-DPI preview and a representative 1024×1024 export still need hands-on inspection.
+
 ## VLote 0.2 — 2026-11-02 — DPI-aware sidebar and readable batch controls
 
 - User-reported regression: VLote 0.1 rendered at high Windows display scaling (e.g. 150–200%) with clipped section titles, cut-off inputs, overlapping lines and nearly invisible black text on dark buttons/checkboxes.
