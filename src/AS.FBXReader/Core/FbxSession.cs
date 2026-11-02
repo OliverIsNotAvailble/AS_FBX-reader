@@ -127,14 +127,24 @@ public sealed class FbxSession : IDisposable
         if (!material.GetMaterialTexture(TextureType.Diffuse, 0, out var slot))
             return string.Empty;
 
-        var raw = slot.FilePath?.Replace('/', Path.DirectorySeparatorChar) ?? string.Empty;
+        var raw = (slot.FilePath ?? string.Empty)
+            .Replace('\\', Path.DirectorySeparatorChar)
+            .Replace('/', Path.DirectorySeparatorChar);
         if (string.IsNullOrWhiteSpace(raw))
             return string.Empty;
 
-        if (Path.IsPathRooted(raw))
-            return raw;
+        var sourceDir = Path.GetDirectoryName(FilePath)!;
+        var expected = Path.IsPathRooted(raw)
+            ? raw
+            : Path.GetFullPath(Path.Combine(sourceDir, raw));
+        if (File.Exists(expected))
+            return expected;
 
-        return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(FilePath)!, raw));
+        // AssetStudio often references "textures/atlas.png" even when its
+        // extracted atlas was saved beside the FBX rather than in textures/.
+        // Preserve the original lookup first; fall back to the sibling PNG.
+        var sibling = Path.Combine(sourceDir, Path.GetFileName(raw));
+        return File.Exists(sibling) ? sibling : expected;
     }
 
     private static void EnsureAssimpLoadedFromAnsiSafePath()
