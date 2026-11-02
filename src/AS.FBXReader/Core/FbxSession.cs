@@ -24,6 +24,12 @@ public sealed class FbxSession : IDisposable
         Parts.AddRange(_originalParts);
     }
 
+    /// <summary>
+    /// VLote: release references to an imported model before moving its
+    /// source folder. The import context remains reusable for the next FBX.
+    /// </summary>
+    public void Clear() => CloseScene();
+
     public ScenePart DuplicatePart(ScenePart source, string id, string texturePath,
         string? savedName = null)
     {

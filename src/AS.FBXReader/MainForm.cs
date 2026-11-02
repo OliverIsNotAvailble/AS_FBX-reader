@@ -5,7 +5,7 @@ using AS.FBXReader.Rendering;
 
 namespace AS.FBXReader;
 
-public sealed class MainForm : Form
+public sealed partial class MainForm : Form
 {
     private readonly FbxSession _session = new();
     private readonly AnimationPlayer _player;
@@ -46,7 +46,7 @@ public sealed class MainForm : Form
     {
         _player = new AnimationPlayer(_session);
 
-        Text = "AS_FBX-reader 0.2.3";
+        Text = "AS_FBX-reader 0.2.3 — VLote 0.1";
         Width = 1500;
         Height = 900;
         MinimumSize = new Size(1000, 650);
@@ -59,6 +59,7 @@ public sealed class MainForm : Form
 
         BuildUi();
         HookEvents();
+        FormClosing += VLoteFormClosing;
         _timer.Start();
     }
 
@@ -102,9 +103,10 @@ public sealed class MainForm : Form
             Padding = new Padding(8, 9, 6, 0),
             Margin = new Padding(6, 3, 3, 3)
         };
+        _mainPmaToggle = pma;
         pma.CheckedChanged += (_, _) =>
         {
-            _viewer.SetPremultiplyAlpha(pma.Checked);
+            SetSharedPma(pma.Checked);
             _status.Text = pma.Checked
                 ? "Alpha mode: Premultiplied Alpha (PMA)"
                 : "Alpha mode: Straight Alpha";
@@ -138,7 +140,12 @@ public sealed class MainForm : Form
             Button("Solo", (_, _) => SoloSelected()),
             Button("New group", (_, _) => CreateRootGroup())
         ]);
-        toolbar.Controls.Add(Button("Fit view", (_, _) => _viewer.ResetFraming()));
+        toolbar.Controls.Add(Button("Fit view", (_, _) =>
+        {
+            _viewer.ResetFraming();
+            SyncBatchFraming();
+        }));
+        _mainToolbar = toolbar;
 
         var split = new SplitContainer
         {
@@ -150,7 +157,12 @@ public sealed class MainForm : Form
 
         ConfigurePartsTree();
 
-        split.Panel1.Controls.Add(_parts);
+        // Batch tab reuses the SAME main viewport, no detached export preview.
+        _meshTab.Controls.Add(_parts);
+        _leftTabs.TabPages.Add(_meshTab);
+        _leftTabs.TabPages.Add(_batchTab);
+        BuildBatchPanel();
+        split.Panel1.Controls.Add(_leftTabs);
         split.Panel2.Controls.Add(_viewer);
 
         _timeline.Dock = DockStyle.Bottom;
@@ -746,60 +758,58 @@ public sealed class MainForm : Form
 
     private void OpenFbx()
     {
+        if (_batchBusy) return;
         using var dialog = new OpenFileDialog
         {
             Filter = "FBX files (*.fbx)|*.fbx|All files (*.*)|*.*",
             Title = "Open AssetStudio FBX"
         };
-
         if (dialog.ShowDialog(this) != DialogResult.OK)
             return;
-
         try
         {
             Cursor = Cursors.WaitCursor;
-
-            _session.Open(dialog.FileName);
-            _excludedPartIds.Clear();
-            _player.Rebuild();
-            _viewer.Attach(_session, _player);
-
-            BuildDefaultPartTree();
-
-            _animations.Items.Clear();
-            foreach (var animation in _session.Animations)
-                _animations.Items.Add(animation);
-
-            if (_animations.Items.Count > 0)
-                _animations.SelectedIndex = 0;
-
-            var duplicateNote = _session.DuplicateModelNamesFixed > 0
-                ? $" | {_session.DuplicateModelNamesFixed} duplicate FBX Model names isolated"
-                : string.Empty;
-            var bindNote = _player.RecoveredBoneOffsets > 0
-                ? $" | {_player.RecoveredBoneOffsets} broken skin binds recovered"
-                : string.Empty;
-            var scaleNote = _player.RestoredCollapsedMeshes > 0
-                ? $" | {_player.RestoredCollapsedMeshes} zero-scale meshes restored"
-                : string.Empty;
-
-            _status.Text =
-                $"{Path.GetFileName(dialog.FileName)} | {_session.Parts.Count} parts | " +
-                $"{_session.Animations.Count} animations{duplicateNote}{scaleNote}{bindNote} | drag parts into groups";
+            if (_batchQueue is not null)
+                ClearBatchForManualOpen();
+            LoadFbxFile(dialog.FileName);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
-                this,
-                ex.ToString(),
-                "Open FBX failed",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+            MessageBox.Show(this, ex.ToString(), "Open FBX failed",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
-        finally
-        {
-            Cursor = Cursors.Default;
-        }
+        finally { Cursor = Cursors.Default; }
+    }
+
+    // Shared by manual Open FBX and VLote's automatic next-file queue.
+    // Loading never invokes the folder picker or silently changes the root.
+    private void LoadFbxFile(string path)
+    {
+        _player.Playing = false;
+        _session.Open(path);
+        _excludedPartIds.Clear();
+        _player.Rebuild();
+        _viewer.Attach(_session, _player);
+        BuildDefaultPartTree();
+        _animations.Items.Clear();
+        foreach (var animation in _session.Animations)
+            _animations.Items.Add(animation);
+        if (_animations.Items.Count > 0)
+            _animations.SelectedIndex = 0;
+
+        var duplicateNote = _session.DuplicateModelNamesFixed > 0
+            ? $" | {_session.DuplicateModelNamesFixed} duplicate FBX Model names isolated"
+            : string.Empty;
+        var bindNote = _player.RecoveredBoneOffsets > 0
+            ? $" | {_player.RecoveredBoneOffsets} broken skin binds recovered"
+            : string.Empty;
+        var scaleNote = _player.RestoredCollapsedMeshes > 0
+            ? $" | {_player.RestoredCollapsedMeshes} zero-scale meshes restored"
+            : string.Empty;
+
+        _status.Text = $"{Path.GetFileName(path)} | {_session.Parts.Count} parts | " +
+            $"{_session.Animations.Count} animations{duplicateNote}{scaleNote}{bindNote} | " +
+            "VLote: preview principal, _EXT, _OK / _Null";
     }
 
     private void BuildDefaultPartTree()
@@ -2015,6 +2025,7 @@ public sealed class MainForm : Form
 
     private void OpenExportDialog()
     {
+        if (_batchBusy) return;
         if (_session.Scene is null || _session.Animations.Count == 0)
         {
             MessageBox.Show(

@@ -4,6 +4,19 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## VLote 0.1 — 2026-11-02 — FBX queue and quick export (branch `VLote`)
+
+- Created independent branch **`VLote` from `main` 0.2.3**, without modifying `main` or the frozen V1 branch. The original Meshes tree, direct FBX loading and Export / Framing dialog remain available.
+- New **VLote** tab inside the MAIN reader's left sidebar. Choose a root directory through Explorer or type its path. Recursively discover `.fbx` models inside its immediate child folders (including deeper subfolders), ignoring `_OK`, `_Null`, `_EXT` at every depth and avoiding junction/symlink loops. No loose FBX files directly in the selected root are automatically moved.
+- Show one FBX at a time in the **original central OpenGL preview** (no redundant window). Automatic next-model loading after Export or NULL, model name/group, `finished/total/remaining` status, and simple export settings alongside classification controls. The original toolbar animation selector/play/pause and mesh visibility remain usable for preview.
+- **EXPORTAR → _OK** captures the existing main preview/camera (including Zoom/X/Y, alpha, mesh visibility), using the existing `AnimationExporter` for PNG-frame rendering plus FFmpeg encoding. Supports WebP, MP4 or MOV; resolution, FPS, quality, PMA, transparent background (WebP/MOV), and **All takes** or the currently selected take. Keeps temporary PNG frames out of the source tree and processes frames asynchronously so WinForms stays responsive. Cancel during rendering or encoding is supported.
+- Videos go to **`<root>\_EXT\<source-group>\<relative-FBX-name>\`**. Each animation is encoded to a numbered filename; no overwrite of prior exports. Export is first completed in a hidden unique staging folder and published with an atomic directory move. On encoder failure/cancel, the FBX remains pending and partial staging files are cleaned up. `_EXT` is always ignored by the queue.
+- **NULL → _Null** classifies a broken/unwanted FBX without exporting. A folder containing multiple FBXs moves only after **every** FBX has a classification. If all are OK or all NULL, the group folder moves intact (with textures and sidecars). Mixed decisions produce a separated `_OK` and `_Null` copy with the corresponding FBX files, while shared textures/resources stay present in each; the source is retired only after both copies are ready. Distinct suffixes prevent overwriting existing folder names.
+- Saves partial classification to `.fbx-vlote-progress.json` in the selected root, allowing a stopped queue to resume; already classified FBXs within an unfinished group are skipped on re-open. Manual Open FBX clears only the live queue (saved progress remains). Prevents changing settings or closing the window mid-export without requesting cancellation.
+- Added `Batch/VLoteQueue.cs` (scanner, grouping, persistence, safe sorting) and `VLoteMainForm.cs` (embedded batch UI and exporter). Updated `MainForm.cs` with reusable file loader and batch tab, `FbxSession.cs` with explicit scene clear, version string and CI workflow for branch builds and downloadable Windows artifact. README unchanged.
+- Known limits: first experimental release, actual FBX data and GPU export/FFmpeg must be tested on Windows. Textures shared **outside** a model's top-level group folder are not moved automatically. Mixed group sorting duplicates non-FBX shared resources to preserve dependencies. This version uses the existing 2D FBX scene renderer from `main` rather than the experimental separate `3D` branch.
+- Verification: Windows .NET 9 build pending; manual workflow and folder movement tests required before use on a full original collection.
+
 ## 0.2.3 — 2026-10-09
 
 - Fixed accidental rename while selecting batches with Ctrl/Shift: WinForms'
