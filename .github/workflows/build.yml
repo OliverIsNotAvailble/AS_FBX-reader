@@ -26,6 +26,6 @@ jobs:
         if: github.ref == 'refs/heads/VLote'
         uses: actions/upload-artifact@v4
         with:
-          name: AS_FBX-reader-VLote-0.3-Windows
+          name: AS_FBX-reader-VLote-0.4-Windows
           path: src/AS.FBXReader/bin/Release/net9.0-windows/
           if-no-files-found: error
