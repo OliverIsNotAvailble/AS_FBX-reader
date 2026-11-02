@@ -4,6 +4,16 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## VLote 0.2 — 2026-11-02 — DPI-aware sidebar and readable batch controls
+
+- User-reported regression: VLote 0.1 rendered at high Windows display scaling (e.g. 150–200%) with clipped section titles, cut-off inputs, overlapping lines and nearly invisible black text on dark buttons/checkboxes.
+- Rebuilt the VLote sidebar layout using a vertically scrollable, one-column **TableLayoutPanel** with `AutoSize` rows instead of a top-docked FlowLayoutPanel containing hard-coded 28/36 px label and editor heights. Labels and status now wrap to the available sidebar width, and the parent can scroll vertically rather than truncate controls.
+- Field rows measure their own preferred control sizes and are given minimum sizes that account for Segoe UI font height. The section headings, current model name, queue counter and export status grow naturally and are never deliberately cropped to fixed heights.
+- Explicit dark-panel/text contrast: labels and checkboxes render white/light-blue, neutral buttons use a slate background with WHITE text, and OK/NULL retain clearly contrasted green/red buttons. Editable text, ComboBox and NumericUpDown keep light inputs with dark readable text. Status and tips are muted, readable gray-blue.
+- The sidebar uses a slightly more compact Segoe UI 10pt font independently of the main preview, with padding and minimum button heights to remain usable at higher DPI. Resize recalculates wrapping width while accounting for the vertical scrollbar.
+- No changes to batch discovery, FFmpeg encoding, file classification, destination folders, PMA synchronization, or the normal Meshes tab. Changed `VLoteMainForm.cs`, version in `MainForm.cs` and `AS.FBXReader.csproj`, and this changelog. README and `main` unchanged.
+- Verification: Windows .NET 9 compilation pending; a real high-DPI desktop visual check is still required to confirm appearance at the user's scaling.
+
 ## VLote 0.1 — 2026-11-02 — FBX queue and quick export (branch `VLote`)
 
 - Created independent branch **`VLote` from `main` 0.2.3**, without modifying `main` or the frozen V1 branch. The original Meshes tree, direct FBX loading and Export / Framing dialog remain available.

@@ -32,7 +32,7 @@ public sealed partial class MainForm
     private readonly TabControl _leftTabs = new() { Dock = DockStyle.Fill };
     private readonly TabPage _batchTab = new("VLote");
     private readonly TabPage _meshTab = new("Meshes");
-    private FlowLayoutPanel? _batchControls;
+    private TableLayoutPanel? _batchControls;
     private FlowLayoutPanel? _mainToolbar;
     private CheckBox? _mainPmaToggle;
     private VLoteQueue? _batchQueue;
@@ -51,58 +51,169 @@ public sealed partial class MainForm
 
     private Control BuildBatchPanel()
     {
-        var outer = new Panel { Dock = DockStyle.Fill, AutoScroll = true,
-            BackColor = Color.FromArgb(34, 39, 48) };
-        var list = new FlowLayoutPanel
+        // The old FlowLayoutPanel forced all text into fixed 28/36 px rows.
+        // At 150-200% Windows DPI, those rows cut off labels, inputs and
+        // buttons. A one-column TableLayoutPanel lets EVERY row grow to the
+        // actual font/preferred height, with vertical scrolling in the host.
+        var panelColor = Color.FromArgb(34, 39, 48);
+        var textColor = Color.FromArgb(239, 243, 249);
+        var mutedColor = Color.FromArgb(190, 204, 222);
+        var accentColor = Color.FromArgb(125, 190, 245);
+        var normalButtonColor = Color.FromArgb(57, 70, 90);
+
+        var outer = new Panel
         {
-            Dock = DockStyle.Top, AutoSize = true,
+            Dock = DockStyle.Fill,
+            AutoScroll = true,
+            BackColor = panelColor,
+            ForeColor = textColor,
+            Font = new Font("Segoe UI", 10f),
+            Padding = Padding.Empty
+        };
+        var list = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            Padding = new Padding(12)
+            ColumnCount = 1,
+            RowCount = 0,
+            GrowStyle = TableLayoutPanelGrowStyle.AddRows,
+            Padding = new Padding(12, 12, 16, 18),
+            Margin = Padding.Empty,
+            BackColor = panelColor
         };
+        list.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         _batchControls = list;
-        void Add(Control control)
+
+        // Wrap by the available SIDEBAR width; no text element can expand
+        // the table horizontally and hide the right side of the controls.
+        var wrapLabels = new List<Label>();
+        void Add(Control control, int gapAfter = 4)
         {
-            control.Margin = new Padding(2, 3, 2, 6);
-            list.Controls.Add(control);
-        }
-        Label Label(string s, bool large = false) => new()
-        {
-            Text = s, ForeColor = Color.White, AutoSize = false,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Height = large ? 36 : 28,
-            Font = large ? new Font(Font, FontStyle.Bold) : Font
-        };
-        Control Field(string name, Control control)
-        {
-            var row = new TableLayoutPanel { ColumnCount = 2, RowCount = 1, Height = 36 };
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48));
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52));
-            row.Controls.Add(new Label
-            {
-                Text = name, ForeColor = Color.White, Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleLeft
-            }, 0, 0);
+            control.Margin = new Padding(2, 3, 2, 3 + gapAfter);
             control.Dock = DockStyle.Fill;
-            row.Controls.Add(control, 1, 0);
+            list.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            list.Controls.Add(control, 0, list.RowCount++);
+        }
+        Label TextLabel(string value, bool heading = false, bool subtitle = false)
+        {
+            var label = new Label
+            {
+                Text = value,
+                AutoSize = true,
+                UseMnemonic = false,
+                ForeColor = heading ? accentColor :
+                    subtitle ? mutedColor : textColor,
+                Font = heading
+                    ? new Font(outer.Font, FontStyle.Bold)
+                    : outer.Font,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            wrapLabels.Add(label);
+            return label;
+        }
+        void Heading(string title)
+        {
+            var label = TextLabel(title, heading: true);
+            label.Margin = new Padding(2, 17, 2, 8);
+            Add(label, 5);
+        }
+        void StyleButton(Button button, Color background, bool prominent = false)
+        {
+            button.FlatStyle = FlatStyle.Flat;
+            button.UseVisualStyleBackColor = false;
+            button.BackColor = background;
+            button.ForeColor = Color.White;
+            button.FlatAppearance.BorderColor = Color.FromArgb(107, 124, 148);
+            button.FlatAppearance.BorderSize = 1;
+            button.MinimumSize = new Size(0,
+                Math.Max(prominent ? 50 : 42, outer.Font.Height + 21));
+            button.AutoSize = true;
+            button.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            button.Padding = new Padding(10, 7, 10, 7);
+            button.Font = prominent
+                ? new Font(outer.Font, FontStyle.Bold)
+                : outer.Font;
+        }
+        void StyleCheck(CheckBox check)
+        {
+            check.AutoSize = false;  // allow text to wrap on narrow sidebars
+            check.Height = Math.Max(48, outer.Font.Height * 2 + 14);
+            check.MinimumSize = new Size(0, check.Height);
+            check.ForeColor = textColor;
+            check.BackColor = panelColor;
+            check.Font = outer.Font;
+            check.UseVisualStyleBackColor = false;
+            check.Padding = new Padding(2, 2, 0, 2);
+            check.TextAlign = ContentAlignment.MiddleLeft;
+        }
+        Control Field(string name, Control input)
+        {
+            var row = new TableLayoutPanel
+            {
+                ColumnCount = 2,
+                RowCount = 1,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                BackColor = panelColor,
+                MinimumSize = new Size(0, Math.Max(49, outer.Font.Height + 21)),
+                Margin = Padding.Empty,
+                Padding = Padding.Empty
+            };
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 43f));
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 57f));
+            row.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+            var caption = new Label
+            {
+                Text = name,
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                UseMnemonic = false,
+                ForeColor = textColor,
+                Font = outer.Font,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Margin = new Padding(0, 4, 7, 4)
+            };
+            input.Font = outer.Font;
+            input.BackColor = Color.White;
+            input.ForeColor = Color.FromArgb(25, 31, 41);
+            input.Dock = DockStyle.Fill;
+            input.MinimumSize = new Size(0, Math.Max(32, outer.Font.Height + 11));
+            input.Margin = new Padding(3, 5, 0, 5);
+            row.Controls.Add(caption, 0, 0);
+            row.Controls.Add(input, 1, 0);
             return row;
         }
 
-        Add(Label("VLote 0.1 — FBX em lote", true));
-        Add(Label("Pasta raiz (subpastas com .fbx)"));
+        Add(TextLabel("VLote 0.2  |  FBX em lote", heading: true), 8);
+        Add(TextLabel("Pasta raiz (procura FBX nas subpastas)"), 1);
+        _batchRoot.Font = outer.Font;
+        _batchRoot.AutoSize = false;
+        _batchRoot.BackColor = Color.White;
+        _batchRoot.ForeColor = Color.FromArgb(25, 31, 41);
+        _batchRoot.MinimumSize = new Size(0, Math.Max(35, outer.Font.Height + 11));
         Add(_batchRoot);
+        StyleButton(_batchBrowse, normalButtonColor);
+        StyleButton(_batchScan, normalButtonColor);
         Add(_batchBrowse);
-        Add(_batchScan);
-        _batchCurrentLabel.ForeColor = Color.White;
-        _batchCurrentLabel.Height = 54;
-        _batchCounterLabel.ForeColor = Color.LightSkyBlue;
-        _batchCounterLabel.Height = 36;
-        _batchCounterLabel.Font = new Font(Font, FontStyle.Bold);
-        Add(_batchCurrentLabel);
-        Add(_batchCounterLabel);
+        Add(_batchScan, 11);
 
-        Add(Label("CONFIGURAÇÕES DE EXPORTAÇÃO", true));
+        _batchCurrentLabel.ForeColor = textColor;
+        _batchCurrentLabel.Font = new Font(outer.Font, FontStyle.Bold);
+        _batchCurrentLabel.AutoSize = true;
+        _batchCurrentLabel.UseMnemonic = false;
+        wrapLabels.Add(_batchCurrentLabel);
+        Add(_batchCurrentLabel, 2);
+
+        _batchCounterLabel.ForeColor = accentColor;
+        _batchCounterLabel.Font = new Font(outer.Font, FontStyle.Bold);
+        _batchCounterLabel.AutoSize = true;
+        _batchCounterLabel.UseMnemonic = false;
+        wrapLabels.Add(_batchCounterLabel);
+        Add(_batchCounterLabel, 8);
+
+        Heading("CONFIGURAÇÕES DE EXPORTAÇÃO");
         _batchFormat.Items.AddRange(["WebP", "MP4", "MOV"]);
         _batchFormat.SelectedIndex = 0;
         Add(Field("Formato", _batchFormat));
@@ -110,37 +221,56 @@ public sealed partial class MainForm
         Add(Field("Altura", _batchHeight));
         Add(Field("FPS", _batchFps));
         Add(Field("Qualidade", _batchQuality));
-        Add(_batchAllTakes);
-        Add(_batchTransparent);
-        Add(_batchPma);
+        foreach (var check in new[] { _batchAllTakes, _batchTransparent, _batchPma })
+        {
+            StyleCheck(check);
+            Add(check, 2);
+        }
 
-        Add(Label("ENQUADRAMENTO DO PREVIEW", true));
+        Heading("ENQUADRAMENTO DO PREVIEW");
         Add(Field("Zoom (%)", _batchZoom));
         Add(Field("X (%)", _batchOffsetX));
         Add(Field("Y (%)", _batchOffsetY));
-        Add(_batchReset);
-        Add(Label("Usa a cena principal; pode ajustar câmera livre no preview."));
+        StyleButton(_batchReset, normalButtonColor);
+        Add(_batchReset, 5);
+        Add(TextLabel("Os ajustes usam o preview principal.", subtitle: true), 5);
 
-        Add(Label("EXPORTAR / CLASSIFICAR", true));
-        _batchExport.Font = new Font(Font, FontStyle.Bold);
-        _batchNull.Font = new Font(Font, FontStyle.Bold);
-        Add(_batchExport);
-        Add(_batchNull);
-        Add(_batchCancel);
-        _batchMessage.ForeColor = Color.FromArgb(198, 220, 242);
-        _batchMessage.Height = 96;
-        Add(_batchMessage);
-        Add(Label("Vídeos → _EXT  |  Originais → _OK / _Null"));
-        Add(Label("Pasta só é movida após classificar TODOS os FBX dela."));
+        Heading("EXPORTAR / CLASSIFICAR");
+        StyleButton(_batchExport, Color.FromArgb(38, 104, 74), prominent: true);
+        StyleButton(_batchNull, Color.FromArgb(130, 58, 64), prominent: true);
+        StyleButton(_batchCancel, normalButtonColor);
+        Add(_batchExport, 5);
+        Add(_batchNull, 5);
+        Add(_batchCancel, 13);
+
+        _batchMessage.ForeColor = mutedColor;
+        _batchMessage.Font = outer.Font;
+        _batchMessage.AutoSize = true;
+        _batchMessage.UseMnemonic = false;
+        wrapLabels.Add(_batchMessage);
+        Add(_batchMessage, 10);
+
+        Add(TextLabel("Vídeos → _EXT  |  Arquivos → _OK / _Null",
+            subtitle: true), 4);
+        Add(TextLabel("A pasta só é movida depois de classificar todos os FBX dela.",
+            subtitle: true), 12);
 
         outer.Controls.Add(list);
-        outer.Resize += (_, _) =>
+
+        // Account for actual scrollbar width and Windows scaling. Labels
+        // have no fixed height: they wrap and the table grows vertically.
+        void ResizeContent()
         {
-            var width = Math.Max(210, outer.ClientSize.Width - 30);
+            var width = Math.Max(140,
+                outer.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 2);
             list.Width = width;
-            foreach (Control c in list.Controls)
-                c.Width = Math.Max(190, width - list.Padding.Horizontal - 10);
-        };
+            var textWidth = Math.Max(100, width - list.Padding.Horizontal - 14);
+            foreach (var label in wrapLabels)
+                label.MaximumSize = new Size(textWidth, 0);
+        }
+        outer.Resize += (_, _) => ResizeContent();
+        outer.HandleCreated += (_, _) => ResizeContent();
+        ResizeContent();
         _batchBrowse.Click += (_, _) =>
         {
             if (_batchBusy) return;
