@@ -1,3 +1,5 @@
+using Microsoft.Win32.SafeHandles;
+using System.Runtime.InteropServices;
 using AS.FBXReader.Batch;
 using AS.FBXReader.Rendering;
 using System.Drawing;
@@ -72,6 +74,50 @@ try
     collision.Complete(collision.Current!, BatchDecision.OK);
     Check(Directory.Exists(Path.Combine(root, "_OK", "Gamma (1)")),
         "existing destination folders are never overwritten");
+    // A Windows program can keep the source folder open without FILE_SHARE_DELETE.
+    // A failed Directory.Move must publish a safe copy and preserve the original.
+    var locked = Path.Combine(root, "Locked");
+    Directory.CreateDirectory(locked);
+    File.WriteAllText(Path.Combine(locked, "locked.fbx"), "keep source");
+    File.WriteAllText(Path.Combine(locked, "atlas.png"), "keep texture");
+    using (DirectoryTestLock.Hold(locked))
+    {
+        var lockedQueue = new VLoteQueue(root);
+        var lockedItem = lockedQueue.Items.Single(e => e.Name == "locked.fbx");
+        var status = lockedQueue.Complete(lockedItem, BatchDecision.OK);
+        Check(status.Contains("COPIADO:", StringComparison.Ordinal),
+            "locked source falls back to copy instead of failing");
+        Check(File.Exists(Path.Combine(locked, "locked.fbx")) &&
+              File.Exists(Path.Combine(root, "_OK", "Locked", "locked.fbx")) &&
+              File.Exists(Path.Combine(root, "_OK", "Locked", "atlas.png")),
+            "locked source retained and fully archived with textures");
+        Check(new VLoteQueue(root).Remaining == 0,
+            "copied locked source remains completed after a queue restart");
+    }
+
+    // Mixed results must also survive a locked source: never roll back both
+    // committed copies just because deleting the source was denied.
+    var mixedLocked = Path.Combine(root, "MixedLocked");
+    Directory.CreateDirectory(mixedLocked);
+    File.WriteAllText(Path.Combine(mixedLocked, "accepted.fbx"), "ok");
+    File.WriteAllText(Path.Combine(mixedLocked, "rejected.fbx"), "null");
+    File.WriteAllText(Path.Combine(mixedLocked, "shared.png"), "shared");
+    using (DirectoryTestLock.Hold(mixedLocked))
+    {
+        var mixedQueue = new VLoteQueue(root);
+        mixedQueue.Complete(mixedQueue.Items.Single(e => e.Name == "accepted.fbx"), BatchDecision.OK);
+        var status = mixedQueue.Complete(
+            mixedQueue.Items.Single(e => e.Name == "rejected.fbx"), BatchDecision.Null);
+        Check(status.Contains("misto", StringComparison.Ordinal),
+            "mixed locked folder completes classification");
+        Check(File.Exists(Path.Combine(root, "_OK", "MixedLocked", "accepted.fbx")) &&
+              File.Exists(Path.Combine(root, "_Null", "MixedLocked", "rejected.fbx")) &&
+              File.Exists(Path.Combine(root, "_OK", "MixedLocked", "shared.png")) &&
+              File.Exists(Path.Combine(root, "_Null", "MixedLocked", "shared.png")),
+            "mixed locked folder preserves both committed archives");
+        Check(new VLoteQueue(root).Remaining == 0,
+            "mixed locked source is not reprocessed after restart");
+    }
     Check(File.Exists(Path.Combine(root, "root-only.fbx")), "root-level source remains untouched");
     Check(new VLoteQueue(root).Remaining == 0, "completed models are skipped on next scan");
     // The main OpenGL preview content and the offscreen export must use
@@ -118,4 +164,27 @@ try
 finally
 {
     try { Directory.Delete(root, true); } catch { }
+}
+
+internal static class DirectoryTestLock
+{
+    private const uint FileFlagBackupSemantics = 0x02000000;
+    private const uint OpenExisting = 3;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFile(
+        string name, uint desiredAccess, uint shareMode, IntPtr securityAttributes,
+        uint creationDisposition, uint flagsAndAttributes, IntPtr templateFile);
+
+    public static SafeFileHandle Hold(string path)
+    {
+        // Share read/write, but do not share DELETE: Windows must refuse a
+        // folder rename while allowing the VLote fallback to copy its files.
+        var handle = CreateFile(path, 0, 3, IntPtr.Zero, OpenExisting,
+            FileFlagBackupSemantics, IntPtr.Zero);
+        if (handle.IsInvalid)
+            throw new IOException("Could not lock test folder: " + path +
+                " / Win32=" + Marshal.GetLastWin32Error());
+        return handle;
+    }
 }
