@@ -623,6 +623,7 @@ public sealed partial class MainForm
         }
 
         string? exportStage = null;
+        string? publishedDestination = null;
         string? frameTemp = null;
         _batchBusy = true;
         _batchCancellation = new CancellationTokenSource();
@@ -694,6 +695,7 @@ public sealed partial class MainForm
             // Publish all or nothing to the final _EXT location.
             Directory.Move(exportStage, destination);
             exportStage = null;
+            publishedDestination = destination;
 
             // Free source resources before moving the input folder.
             ReleaseBatchScene();
@@ -707,9 +709,24 @@ public sealed partial class MainForm
         }
         catch (Exception ex)
         {
-            BatchStatus("FALHA: " + ex.Message + " | FBX mantido no lugar.");
-            MessageBox.Show(this, ex.ToString(), "VLote: exportação falhou",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (publishedDestination is not null)
+            {
+                BatchStatus($"Vídeos SALVOS em {publishedDestination}; " +
+                    $"a movimentação/classificação da origem falhou: {ex.Message}");
+                MessageBox.Show(this,
+                    "Os vídeos já foram exportados e NÃO foram apagados!\r\n\r\n" +
+                    $"Pasta: {publishedDestination}\r\n\r\n" +
+                    "O erro aconteceu somente ao organizar o FBX original. " +
+                    "Não exporte tudo novamente antes de conferir _EXT.\r\n\r\n" +
+                    ex, "VLote: vídeos salvos; organização falhou",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            else
+            {
+                BatchStatus("FALHA NA EXPORTAÇÃO: " + ex.Message + " | FBX mantido no lugar.");
+                MessageBox.Show(this, ex.ToString(), "VLote: exportação falhou",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
         finally
         {
