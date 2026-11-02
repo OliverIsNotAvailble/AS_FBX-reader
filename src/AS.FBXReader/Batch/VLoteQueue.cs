@@ -161,8 +161,39 @@ public sealed class VLoteQueue
             var parent = Path.Combine(Root, allOk ? "_OK" : "_Null");
             var destination = UniquePath(parent, Path.GetFileName(source));
             Directory.CreateDirectory(parent);
-            Directory.Move(source, destination);
-            return destination;
+            try
+            {
+                Directory.Move(source, destination);
+                return destination;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Windows can refuse to rename a folder while another program
+                // has a file handle open (Explorer, antivirus, FBX importer).
+                // Copy to a staging directory and publish atomically instead.
+                // NEVER delete the source in this fallback: it may still be
+                // locked, and deleting recursively can destroy only part of it.
+                if (!Directory.Exists(source))
+                    throw;
+
+                var stage = destination + ".vlote-stage-" + Guid.NewGuid().ToString("N");
+                try
+                {
+                    CopyTree(source, stage);
+                    Directory.Move(stage, destination);
+                    return $"{destination} (COPIADO: pasta original mantida porque a movimentação foi bloqueada; " +
+                           "apague a original manualmente quando não estiver mais em uso)";
+                }
+                finally
+                {
+                    if (Directory.Exists(stage))
+                    {
+                        try { Directory.Delete(stage, true); }
+                        catch (IOException) { }
+                        catch (UnauthorizedAccessException) { }
+                    }
+                }
+            }
         }
 
         // Mixed results: retain shared textures/sidecar files in BOTH copies.
@@ -194,17 +225,29 @@ public sealed class VLoteQueue
             movedOk = true;
             Directory.Move(stageBad, bad);
             movedBad = true;
-            Directory.Delete(source, recursive: true);
-            return $"{ok} + {bad} (misto)";
         }
         catch
         {
-            // Best effort rollback: DO NOT touch source files after failure.
+            // Roll back only while publishing copies. Once BOTH copies have
+            // been committed, cleanup of the source must never erase them.
             if (Directory.Exists(stageOk)) Directory.Delete(stageOk, true);
             if (Directory.Exists(stageBad)) Directory.Delete(stageBad, true);
             if (movedOk && Directory.Exists(ok)) Directory.Delete(ok, true);
             if (movedBad && Directory.Exists(bad)) Directory.Delete(bad, true);
             throw;
+        }
+
+        try
+        {
+            Directory.Delete(source, recursive: true);
+            return $"{ok} + {bad} (misto)";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Both archived copies are already complete. Keep those results
+            // even if the source cannot be deleted due to a Windows lock.
+            return $"{ok} + {bad} (misto; pasta original parcialmente ou totalmente mantida, " +
+                   "limpe a origem manualmente quando possível)";
         }
     }
 
