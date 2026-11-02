@@ -12,7 +12,7 @@ current code when resuming work in a later conversation.
 - Explicit dark-panel/text contrast: labels and checkboxes render white/light-blue, neutral buttons use a slate background with WHITE text, and OK/NULL retain clearly contrasted green/red buttons. Editable text, ComboBox and NumericUpDown keep light inputs with dark readable text. Status and tips are muted, readable gray-blue.
 - The sidebar uses a slightly more compact Segoe UI 10pt font independently of the main preview, with padding and minimum button heights to remain usable at higher DPI. Resize recalculates wrapping width while accounting for the vertical scrollbar.
 - No changes to batch discovery, FFmpeg encoding, file classification, destination folders, PMA synchronization, or the normal Meshes tab. Changed `VLoteMainForm.cs`, version in `MainForm.cs` and `AS.FBXReader.csproj`, and this changelog. README and `main` unchanged.
-- Verification: Windows .NET 9 compilation pending; a real high-DPI desktop visual check is still required to confirm appearance at the user's scaling.
+- Verification: **Windows .NET 9 Release build and VLote folder-sorting smoke tests PASSED**, and compiled artifact `AS_FBX-reader-VLote-0.2-Windows` uploaded: https://github.com/OliverIsNotAvailble/AS_FBX-reader/actions/runs/41487571999. A real high-DPI desktop visual check is still required to verify sizing at the user's scaling.
 
 ## VLote 0.1 — 2026-11-02 — FBX queue and quick export (branch `VLote`)
 
