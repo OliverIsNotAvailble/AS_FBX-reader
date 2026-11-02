@@ -15,6 +15,7 @@ public sealed class AnimationPlayer
         public Matrix4 Global { get; set; }
         public Matrix4 BindGlobal { get; set; }
         public bool CollapsedMesh { get; init; }
+        public bool CollapsedAncestor { get; init; }
         public bool SourceVisible { get; set; } = true;
         public Vector3 BaseScale { get; init; } = Vector3.One;
         public Quaternion BaseRotation { get; init; } = Quaternion.Identity;
@@ -32,6 +33,7 @@ public sealed class AnimationPlayer
     public bool Playing { get; set; }
     public int RecoveredBoneOffsets { get; private set; }
     public int RestoredCollapsedMeshes { get; private set; }
+    public int RestoredCollapsedAncestors { get; private set; }
     public string? CurrentAnimationName
         => AnimationIndex >= 0 && AnimationIndex < _session.Animations.Count
             ? _session.Animations[AnimationIndex].Name
@@ -54,6 +56,7 @@ public sealed class AnimationPlayer
         TimeSeconds = 0;
         RecoveredBoneOffsets = 0;
         RestoredCollapsedMeshes = 0;
+        RestoredCollapsedAncestors = 0;
 
         if (_session.Scene?.RootNode is null)
             return;
@@ -195,16 +198,22 @@ public sealed class AnimationPlayer
     {
         var local = MatrixUtil.ToOpenTk(node.Transform);
 
-        // AssetStudio encodes inactive SpriteSkin pieces by setting their mesh
-        // node's local scale to (0,0,0). This collapses every triangle to one
-        // point and also makes FBX skin bind matrices NaN. The reader exposes
-        // visibility separately, so restore the mesh geometry here; leave
-        // skeleton and parent transforms alone.
-        var collapsedMesh = node.MeshIndices.Count > 0 && IsCollapsedMesh(local);
-        if (collapsedMesh)
+        // AssetStudio can write (0,0,0) scale not only on SpriteSkin meshes,
+        // but also on an ancestor such as "TopmostCanvas". Even after fixing
+        // every mesh, that ancestor would flatten the entire character.
+        // Restore only zero-scale nodes containing renderable descendants;
+        // leave unrelated scene transforms and bone hierarchies untouched.
+        var zeroScale = IsCollapsedMesh(local);
+        var collapsedMesh = node.MeshIndices.Count > 0 && zeroScale;
+        var collapsedAncestor = node.MeshIndices.Count == 0 &&
+            zeroScale && HasMeshDescendant(node);
+        if (collapsedMesh || collapsedAncestor)
         {
             local = Matrix4.CreateTranslation(local.M41, local.M42, local.M43);
-            RestoredCollapsedMeshes++;
+            if (collapsedMesh)
+                RestoredCollapsedMeshes++;
+            else
+                RestoredCollapsedAncestors++;
         }
 
         var baseScale = Vector3.One;
@@ -233,6 +242,7 @@ public sealed class AnimationPlayer
             Local = local,
             BaseLocal = local,
             CollapsedMesh = collapsedMesh,
+            CollapsedAncestor = collapsedAncestor,
             BaseScale = baseScale,
             BaseRotation = baseRotation,
             BaseTranslation = baseTranslation
@@ -272,6 +282,10 @@ public sealed class AnimationPlayer
             var ticks = TimeSeconds * tps;
 
             var scale = SampleVector(channel.ScalingKeys, ticks, state.BaseScale);
+            // A hidden canvas/parent must not collapse the descendants again
+            // when an animation also supplies a zero-scale key.
+            if (state.CollapsedAncestor && IsZeroScale(scale))
+                scale = state.BaseScale;
             if (state.Node.MeshIndices.Count > 0)
             {
                 // AssetStudio writes SpriteRenderer enable/disable as mesh
@@ -326,6 +340,18 @@ public sealed class AnimationPlayer
         }
 
         return MatrixUtil.ToOpenTk(keys[0].Value);
+    }
+
+    private static bool HasMeshDescendant(Node node)
+        => node.Children.Any(child =>
+            child.MeshIndices.Count > 0 || HasMeshDescendant(child));
+
+    private static bool IsZeroScale(Vector3 scale)
+    {
+        const float epsilon = 0.000001f;
+        return MathF.Abs(scale.X) < epsilon &&
+               MathF.Abs(scale.Y) < epsilon &&
+               MathF.Abs(scale.Z) < epsilon;
     }
 
     private static bool IsCollapsedMesh(Matrix4 m)
