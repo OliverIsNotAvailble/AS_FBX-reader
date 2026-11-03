@@ -25,9 +25,9 @@ var scaleVisible = visibilityType.GetMethod("IsVisibleScale",
     BindingFlags.Static | BindingFlags.NonPublic)!;
 var spriteKeys = new List<Assimp.VectorKey>
 {
-    new(0, new Assimp.Vector3D(0f, 0f, 0.042f)),
-    new(10, new Assimp.Vector3D(1f, 1f, 0.043f)),
-    new(20, new Assimp.Vector3D(0f, 0f, 0.044f))
+    new(0, new System.Numerics.Vector3(0f, 0f, 0.042f)),
+    new(10, new System.Numerics.Vector3(1f, 1f, 0.043f)),
+    new(20, new System.Numerics.Vector3(0f, 0f, 0.044f))
 };
 bool VisibleAt(double ticks)
 {
