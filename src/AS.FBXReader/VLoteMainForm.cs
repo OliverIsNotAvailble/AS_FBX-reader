@@ -201,7 +201,7 @@ public sealed partial class MainForm
             return row;
         }
 
-        Add(TextLabel("VLote 0.2  |  FBX em lote", heading: true), 8);
+        Add(TextLabel("VLote 0.6  |  FBX em lote", heading: true), 8);
         Add(TextLabel("Pasta raiz (procura FBX nas subpastas)"), 1);
         _batchRoot.Font = outer.Font;
         _batchRoot.AutoSize = false;
