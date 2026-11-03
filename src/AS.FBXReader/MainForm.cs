@@ -134,7 +134,7 @@ public sealed partial class MainForm : Form
             export,
             freeCamera,
             pma,
-            Button("Allow all", (_, _) => SetAll(true)),
+            Button("Auto all", (_, _) => SetAll(true)),
             Button("Hide all", (_, _) => SetAll(false)),
             Button("Force all", (_, _) => ForceAll()),
             Button("Solo", (_, _) => SoloSelected()),
