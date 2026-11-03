@@ -126,8 +126,22 @@ public sealed class AnimationPlayer
         return IsFinite(follow) ? follow : null;
     }
 
+    // A SpriteRenderer lives on the mesh, but a FBX Null/Canvas parent can
+    // also animate visibility using (0,0,0) scale. Respect the complete chain.
+    // ForceVisible still overrides this at the ScenePart level for debugging.
     public bool IsSourceVisible(string nodeName)
-        => !_states.TryGetValue(nodeName, out var state) || state.SourceVisible;
+    {
+        if (!_states.TryGetValue(nodeName, out var state))
+            return true;
+
+        for (NodeState? current = state; current is not null; current = current.Parent)
+        {
+            if (!current.SourceVisible)
+                return false;
+        }
+
+        return true;
+    }
 
     public Matrix4[] GetBoneMatrices(Node meshNode, Mesh mesh, bool rebuildBindPose = false)
     {
@@ -271,6 +285,9 @@ public sealed class AnimationPlayer
     private void EvaluateNode(NodeState state)
     {
         var local = state.BaseLocal;
+        // Static hidden SpriteRenderers remain hidden. A collapsed ancestor
+        // (e.g. AssetStudio's TopmostCanvas) is restored at import; it does
+        // not by itself mean every child is invisible.
         state.SourceVisible = !state.CollapsedMesh;
 
         if (AnimationIndex >= 0 &&
@@ -282,30 +299,47 @@ public sealed class AnimationPlayer
             var ticks = TimeSeconds * tps;
 
             var scale = SampleVector(channel.ScalingKeys, ticks, state.BaseScale);
-            // A hidden canvas/parent must not collapse the descendants again
-            // when an animation also supplies a zero-scale key.
-            if (state.CollapsedAncestor && IsZeroScale(scale))
-                scale = state.BaseScale;
-            if (state.Node.MeshIndices.Count > 0)
+            if (channel.ScalingKeys.Count > 0)
             {
-                // AssetStudio writes SpriteRenderer enable/disable as mesh
-                // scale keys of exactly 0 or 1. Sample those as switches,
-                // never interpolate a ghost image between the two states.
+                // SpriteRenderer enabled/disabled is encoded in FBX as
+                // animated (1,1,1)/(0,0,0) scale. Use a held key, not a
+                // linear interpolation, or transition frames show ghost
+                // arms/eyes/mouths while both sprites fade through 0..1.
                 if (IsVisibilityCurve(channel.ScalingKeys))
                     scale = SampleSteppedVector(channel.ScalingKeys, ticks, state.BaseScale);
 
-                state.SourceVisible = channel.ScalingKeys.Count > 0
-                    ? MathF.Abs(scale.X) > 0.000001f && MathF.Abs(scale.Y) > 0.000001f
-                    : !state.CollapsedMesh;
+                // Some FBX exporters collapse the whole static Canvas and
+                // write only constant zero keys for it. Preserve the prior
+                // recoverable-canvas behavior in that specific case.
+                var ignoredCollapsedCanvas =
+                    state.CollapsedAncestor &&
+                    IsZeroScale(scale) &&
+                    channel.ScalingKeys.All(key =>
+                        IsZeroScale(MatrixUtil.ToOpenTk(key.Value)));
 
-                // Keep a usable mesh transform even while source visibility
-                // is off, so the per-part Force visible option can show it.
-                if (!state.SourceVisible)
+                if (ignoredCollapsedCanvas)
+                {
                     scale = state.BaseScale;
+                }
+                else
+                {
+                    // Visibility belongs to the node whose keys are evaluated,
+                    // NOT just to Mesh nodes. The parent chain is checked by
+                    // IsSourceVisible. Only XY determine a flat sprite's
+                    // visibility; Z often encodes layer depth.
+                    state.SourceVisible = IsVisibleScale(scale);
+
+                    // Separate logical visibility from the transform used for
+                    // skinning/bind recovery. Zeroing the actual transform
+                    // would make ForceVisible incapable of showing the sprite
+                    // for inspection and could produce singular matrices.
+                    if (!state.SourceVisible)
+                        scale = state.BaseScale;
+                }
             }
+
             var rotation = SampleQuaternion(channel.RotationKeys, ticks, state.BaseRotation);
             var translation = SampleVector(channel.PositionKeys, ticks, state.BaseTranslation);
-
             local =
                 Matrix4.CreateScale(scale) *
                 Matrix4.CreateFromQuaternion(rotation) *
@@ -319,13 +353,25 @@ public sealed class AnimationPlayer
             EvaluateNode(child);
     }
 
+    private static bool IsVisibleScale(Vector3 scale)
+    {
+        const float epsilon = 0.00001f;
+        return float.IsFinite(scale.X) && float.IsFinite(scale.Y) &&
+               MathF.Abs(scale.X) > epsilon && MathF.Abs(scale.Y) > epsilon;
+    }
+
     private static bool IsVisibilityCurve(IList<VectorKey> keys)
         => keys.Count > 0 && keys.All(key =>
         {
-            var v = MatrixUtil.ToOpenTk(key.Value);
+            var value = MatrixUtil.ToOpenTk(key.Value);
             const float epsilon = 0.0001f;
-            return (MathF.Abs(v.X) < epsilon && MathF.Abs(v.Y) < epsilon && MathF.Abs(v.Z) < epsilon) ||
-                   (MathF.Abs(v.X - 1f) < epsilon && MathF.Abs(v.Y - 1f) < epsilon && MathF.Abs(v.Z - 1f) < epsilon);
+            // Ignore Z for binary SpriteRenderer switches: AssetStudio can
+            // store drawing-depth changes alongside an XY visibility switch.
+            var hidden = MathF.Abs(value.X) < epsilon &&
+                         MathF.Abs(value.Y) < epsilon;
+            var shown = MathF.Abs(value.X - 1f) < epsilon &&
+                        MathF.Abs(value.Y - 1f) < epsilon;
+            return hidden || shown;
         });
 
     private static Vector3 SampleSteppedVector(IList<VectorKey> keys, double time, Vector3 fallback)
@@ -333,9 +379,11 @@ public sealed class AnimationPlayer
         if (keys.Count == 0)
             return fallback;
 
+        // Assimp keeps the FBX key times; on a repeated timestamp the last
+        // authored key wins. Never interpolate a visible and hidden sprite.
         for (var i = keys.Count - 1; i >= 0; i--)
         {
-            if (time >= keys[i].Time)
+            if (time + 0.000001 >= keys[i].Time)
                 return MatrixUtil.ToOpenTk(keys[i].Value);
         }
 
