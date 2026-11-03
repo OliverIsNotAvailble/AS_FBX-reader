@@ -1,5 +1,8 @@
 using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
+using System.Reflection;
+using AS.FBXReader.Core;
+using AS.FBXReader.Models;
 using AS.FBXReader.Batch;
 using AS.FBXReader.Rendering;
 using System.Drawing;
@@ -10,6 +13,44 @@ static void Check(bool result, string description)
         throw new Exception("VLote smoke FAILED: " + description);
     Console.WriteLine("PASS: " + description);
 }
+// Actual FBX sample (DesertFox_Dead_Character) encodes mutually exclusive
+// eyes/mouth/limbs as 0/1 XY scale keys, while Z is reserved for draw order.
+// Regression: never interpolate a half-visible ghost between animation keys.
+var visibilityType = typeof(AnimationPlayer);
+var detectSwitch = visibilityType.GetMethod("IsVisibilityCurve",
+    BindingFlags.Static | BindingFlags.NonPublic)!;
+var sampleSwitch = visibilityType.GetMethod("SampleSteppedVector",
+    BindingFlags.Static | BindingFlags.NonPublic)!;
+var scaleVisible = visibilityType.GetMethod("IsVisibleScale",
+    BindingFlags.Static | BindingFlags.NonPublic)!;
+var spriteKeys = new List<Assimp.VectorKey>
+{
+    new(0, new Assimp.Vector3D(0f, 0f, 0.042f)),
+    new(10, new Assimp.Vector3D(1f, 1f, 0.043f)),
+    new(20, new Assimp.Vector3D(0f, 0f, 0.044f))
+};
+bool VisibleAt(double ticks)
+{
+    var sample = (OpenTK.Mathematics.Vector3)sampleSwitch.Invoke(null,
+        [spriteKeys, ticks, OpenTK.Mathematics.Vector3.One])!;
+    return (bool)scaleVisible.Invoke(null, [sample])!;
+}
+Check((bool)detectSwitch.Invoke(null, [spriteKeys])!,
+    "SpriteRenderer visibility keys are recognized even with varying Z layers");
+Check(!VisibleAt(0) && !VisibleAt(9.9) && VisibleAt(10) &&
+      VisibleAt(19.9) && !VisibleAt(20),
+    "SpriteRenderer visibility switches at keys without ghost interpolation");
+Check((bool)scaleVisible.Invoke(null,
+        [new OpenTK.Mathematics.Vector3(1f, 1f, 0f)])!,
+    "sprite Z=0 is valid depth and must not hide its flat XY geometry");
+var debugPart = new ScenePart { Id = "test", Name = "test",
+    NodeName = "test", MeshIndex = 0 };
+Check(!debugPart.ShouldRender("clip", 0, sourceVisible: false),
+    "auto mode respects hidden animation state");
+debugPart.ForceVisible = true;
+Check(debugPart.ShouldRender("clip", 0, sourceVisible: false),
+    "force visible continues to work as an explicit debugging override");
+
 var root = Path.Combine(Path.GetTempPath(), "fbx_vlote_smoke_" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 try
