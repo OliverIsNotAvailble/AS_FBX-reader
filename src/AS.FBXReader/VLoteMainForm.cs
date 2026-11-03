@@ -600,6 +600,28 @@ public sealed partial class MainForm
                 "MP4 não preserva transparência. Use WebP/MOV ou desmarque fundo transparente.");
             return;
         }
+        // ForceVisible deliberately ignores FBX hide/show curves. Exporting
+        // several takes with forced sprites duplicates alternative eyes,
+        // mouths, arms and legs. Offer to restore automatic timing first.
+        var forcedCount = _session.Parts.Count(part => part.Visible && part.ForceVisible);
+        if (forcedCount > 0)
+        {
+            var answer = MessageBox.Show(this,
+                $"{forcedCount} mesh(es) estão em FORCED.\r\n\r\n" +
+                "Isso ignora os switches 0/1 do FBX e pode duplicar olhos, bocas, " +
+                "braços e pernas durante a animação.\r\n\r\n" +
+                "SIM = restaurar a visibilidade automática de TODAS as meshes e exportar.\r\n" +
+                "NÃO = exportar exatamente com os FORCED atuais (modo debug).\r\n" +
+                "CANCELAR = voltar sem exportar.",
+                "VLote: visibilidade automática ou Forced?",
+                MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button1);
+            if (answer == DialogResult.Cancel)
+                return;
+            if (answer == DialogResult.Yes)
+                SetAll(true);
+        }
+
         var opts = new ExportSettings
         {
             Format = (ExportFormat)(_batchFormat.SelectedIndex switch
