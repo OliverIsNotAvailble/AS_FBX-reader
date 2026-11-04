@@ -2056,7 +2056,9 @@ public sealed partial class MainForm : Form
             _viewer.PremultiplyAlpha,
             (int)_batchWidth.Value,
             (int)_batchHeight.Value,
-            _viewer.GetFraming());
+            _viewer.GetFraming(),
+            _batchOutputRoot.Text,
+            folder => _batchOutputRoot.Text = folder);
 
         dialog.ShowDialog(this);
 
