@@ -23,11 +23,14 @@ public sealed class SceneRenderer : IDisposable
     private bool _premultiplyAlpha = true;
     private bool _transparentBackground;
     private Color _backgroundColor = Color.FromArgb(28, 28, 28);
+    private string? _backgroundImagePath;
+    private Size _backgroundImageSize;
     private FramingState _framing = new();
 
     public bool PremultiplyAlpha => _premultiplyAlpha;
     public bool TransparentBackground => _transparentBackground;
     public Color BackgroundColor => _backgroundColor;
+    public string? BackgroundImagePath => _backgroundImagePath;
 
     public void SetPremultiplyAlpha(bool enabled)
     {
@@ -74,6 +77,26 @@ public sealed class SceneRenderer : IDisposable
     {
         _transparentBackground = transparent;
         _backgroundColor = color;
+    }
+
+    /// <summary>
+    /// Optional still image behind all meshes. The image is center-cropped to
+    /// the output aspect ratio (cover), never stretched. GPU loading happens
+    /// during rendering on the active OpenGL context.
+    /// </summary>
+    public void SetBackgroundImage(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            _backgroundImagePath = null;
+            _backgroundImageSize = Size.Empty;
+            return;
+        }
+
+        var fullPath = Path.GetFullPath(path);
+        using var bitmap = new Bitmap(fullPath); // validates image before export
+        _backgroundImageSize = bitmap.Size;
+        _backgroundImagePath = fullPath;
     }
 
     public FramingState CaptureFramingReference()
@@ -191,6 +214,12 @@ public sealed class SceneRenderer : IDisposable
             alpha);
         GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
+        // Draw image behind the character into the very same OpenGL target.
+        // This is also used by CaptureFramePixels, so the preview and the
+        // exported frames have identical backgrounds/framing.
+        if (!_transparentBackground && _backgroundImagePath is not null)
+            DrawBackgroundImage(width, height);
+
         if (_session?.Scene is null || _player is null)
             return;
 
@@ -227,6 +256,51 @@ public sealed class SceneRenderer : IDisposable
         GL.UseProgram(0);
     }
 
+
+    private void DrawBackgroundImage(int width, int height)
+    {
+        if (_backgroundImagePath is null || _backgroundImageSize.IsEmpty)
+            return;
+
+        var texture = _textures.GetOrLoad(_backgroundImagePath);
+        if (texture == 0)
+            return;
+
+        var uv = BackgroundImageLayout.Cover(
+            _backgroundImageSize.Width, _backgroundImageSize.Height, width, height);
+        // TextureCache uploads the bitmap in its native top-to-bottom order.
+        // The background quad therefore assigns V=0 to the top edge.
+        float[] vertices =
+        [
+            -1f, -1f, 0f, uv.MinU, uv.MaxV, // lower-left
+             1f, -1f, 0f, uv.MaxU, uv.MaxV, // lower-right
+             1f,  1f, 0f, uv.MaxU, uv.MinV, // upper-right
+            -1f,  1f, 0f, uv.MinU, uv.MinV  // upper-left
+        ];
+        uint[] indices = [0, 1, 2, 0, 2, 3];
+
+        ApplyBlendMode();
+        GL.UseProgram(_program);
+        var projection = Matrix4.Identity;
+        GL.UniformMatrix4(GL.GetUniformLocation(_program, "uProjection"),
+            false, ref projection);
+        GL.Uniform4(GL.GetUniformLocation(_program, "uColor"), 1f, 1f, 1f, 1f);
+        GL.Uniform1(GL.GetUniformLocation(_program, "uTexture"), 0);
+        GL.Uniform1(GL.GetUniformLocation(_program, "uUseTexture"), 1);
+        GL.ActiveTexture(TextureUnit.Texture0);
+        GL.BindTexture(TextureTarget.Texture2D, texture);
+        GL.BindVertexArray(_vao);
+        GL.BindBuffer(BufferTarget.ArrayBuffer, _vbo);
+        GL.BufferData(BufferTarget.ArrayBuffer, vertices.Length * sizeof(float),
+            vertices, BufferUsageHint.DynamicDraw);
+        GL.BindBuffer(BufferTarget.ElementArrayBuffer, _ebo);
+        GL.BufferData(BufferTarget.ElementArrayBuffer,
+            indices.Length * sizeof(uint), indices, BufferUsageHint.DynamicDraw);
+        GL.DrawElements(OpenTK.Graphics.OpenGL4.PrimitiveType.Triangles,
+            indices.Length, DrawElementsType.UnsignedInt, 0);
+        GL.BindVertexArray(0);
+        GL.UseProgram(0);
+    }
 
     private List<PreparedPart> PrepareVisibleParts()
     {
