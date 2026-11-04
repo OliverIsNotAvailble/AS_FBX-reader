@@ -51,6 +51,27 @@ debugPart.ForceVisible = true;
 Check(debugPart.ShouldRender("clip", 0, sourceVisible: false),
     "force visible continues to work as an explicit debugging override");
 
+// Generated FBX 7.3 binary fixture. Test the authored Model defaults,
+// independently from Assimp's first-frame imported node transforms.
+var visibilityFixturePath = Path.Combine(Path.GetTempPath(),
+    "fbx_visibility_fixture_" + Guid.NewGuid().ToString("N") + ".fbx");
+try
+{
+    File.WriteAllBytes(visibilityFixturePath, Convert.FromBase64String(
+        "S2F5ZGFyYSBGQlggQmluYXJ5ICAAGgCEHAAAqgIAAAAAAAAAAAAAB09iamVjdHNnAAAAAwAAACYAAAAFTW9kZWxMahAAAAAAAABTDwAAAE1lc2hCb2R5AAFNb2RlbFMEAAAATWVzaC0BAAADAAAALQAAAAVNb2RlbExrEAAAAAAAAFMWAAAATWVzaEhpZGRlblNjYWxlAAFNb2RlbFMEAAAATWVzaCABAAAAAAAAAAAAAAxQcm9wZXJ0aWVzNzATAQAABwAAAEYAAAABUFMLAAAATGNsIFNjYWxpbmdTCwAAAExjbCBTY2FsaW5nUwAAAABTAQAAAEFEAAAAAAAAAABEAAAAAAAAAABEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAN0BAAADAAAAKwAAAAVNb2RlbExsEAAAAAAAAFMUAAAATWVzaEhpZGRlblZpcwABTW9kZWxTBAAAAE1lc2jQAQAAAAAAAAAAAAAMUHJvcGVydGllczcwwwEAAAUAAAAyAAAAAVBTCgAAAFZpc2liaWxpdHlTCgAAAFZpc2liaWxpdHlTAAAAAFMBAAAAQUQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAnQIAAAMAAAAnAAAABU1vZGVsTG0QAAAAAAAAUxAAAABNZXNoRmxhdFoAAU1vZGVsUwQAAABNZXNokAIAAAAAAAAAAAAADFByb3BlcnRpZXM3MIMCAAAHAAAARgAAAAFQUwsAAABMY2wgU2NhbGluZ1MLAAAATGNsIFNjYWxpbmdTAAAAAFMBAAAAQUQAAAAAAADwP0QAAAAAAADwP0QAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="));
+    var authored = FbxAuthoredVisibility.Read(visibilityFixturePath);
+    Check(authored.Count == 4, "read four authored FBX model default states");
+    Check(authored["MeshBody"], "missing scale/visibility means shown by default");
+    Check(!authored["MeshHiddenScale"], "authored scale zero hides sprite");
+    Check(!authored["MeshHiddenVis"], "authored Visibility 0 hides sprite");
+    Check(authored["MeshFlatZ"], "draw-layer Z=0 must not hide XY sprite");
+}
+finally
+{
+    if (File.Exists(visibilityFixturePath))
+        File.Delete(visibilityFixturePath);
+}
+
 var root = Path.Combine(Path.GetTempPath(), "fbx_vlote_smoke_" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 try
