@@ -804,6 +804,9 @@ public sealed partial class MainForm : Form
         var bindNote = _player.RecoveredBoneOffsets > 0
             ? $" | {_player.RecoveredBoneOffsets} broken skin binds recovered"
             : string.Empty;
+        var sourceNote = _session.AuthoredModelCount > 0
+            ? $" | FBX original: {_session.AuthoredModelCount} nodes, {_session.AuthoredHiddenNodes} hidden at rest"
+            : string.Empty;
         var scaleNote = _player.RestoredCollapsedMeshes > 0
             ? $" | {_player.RestoredCollapsedMeshes} zero-scale meshes restored"
             : string.Empty;
@@ -812,7 +815,7 @@ public sealed partial class MainForm : Form
             : string.Empty;
 
         _status.Text = $"{Path.GetFileName(path)} | {_session.Parts.Count} parts | " +
-            $"{_session.Animations.Count} animations{duplicateNote}{scaleNote}{ancestorNote}{bindNote} | " +
+            $"{_session.Animations.Count} animations{duplicateNote}{scaleNote}{ancestorNote}{sourceNote}{bindNote} | " +
             "VLote: preview principal, _EXT, _OK / _Null";
     }
 
