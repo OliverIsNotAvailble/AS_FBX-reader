@@ -132,6 +132,7 @@ public sealed partial class MainForm : Form
             saveProfile,
             loadProfile,
             export,
+            Button("LOG", (_, _) => ExportFbxVisibilityLog()),
             freeCamera,
             pma,
             Button("Auto all", (_, _) => SetAll(true)),
