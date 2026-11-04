@@ -50,6 +50,8 @@ public static class FbxVisibilityLog
                 session.DuplicateModelNamesFixed);
             sb.AppendLine("Restored collapsed mesh transforms: " +
                 player.RestoredCollapsedMeshes);
+            sb.AppendLine("Always-on static SpriteSkins recovered (never keyed in any take): " +
+                player.RecoveredStaticSpriteCount);
             sb.AppendLine("Restored collapsed parent transforms: " +
                 player.RestoredCollapsedAncestors);
             sb.AppendLine("Recovered invalid skin offsets: " +
@@ -72,6 +74,8 @@ public static class FbxVisibilityLog
                     .Append(" | meshIndex=").Append(part.MeshIndex)
                     .Append(" | USER_VISIBLE=").Append(part.Visible)
                     .Append(" | FORCED=").Append(part.ForceVisible)
+                    .Append(" | STATIC_RECOVERED=").Append(
+                        player.IsRecoveredStaticSprite(part.NodeName))
                     .Append(" | timedKeys=").Append(part.VisibilityKeys.Count)
                     .AppendLine();
 
