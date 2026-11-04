@@ -18,6 +18,19 @@ public sealed class FbxSession : IDisposable
     public int RawScaleAnimationCount => _rawScaleVisibility?.AnimationCount ?? 0;
     public int RawScaleTrackCount => _rawScaleVisibility?.TrackCount ?? 0;
     public bool HasRawScaleAnimations => RawScaleTrackCount > 0;
+    // AssetStudio occasionally writes zero scale on every imported skinned
+    // sprite, including meshes that never receive any scale/visibility keys.
+    // The fixed character body, face, hair, arms, etc. must not stay hidden
+    // forever just because their exported bind pose is collapsed.
+    // Only apply this recovery to actual collapsed SpriteSkins, and only when
+    // the FBX has real scale tracks for its animated alternatives. Non-skinned
+    // overlays and any SpriteSkin with a key in ANY take remain untouched.
+    public bool IsUnanimatedStaticSprite(string nodeName, bool collapsedMesh)
+        => collapsedMesh &&
+           nodeName.StartsWith("__spriteskin_", StringComparison.Ordinal) &&
+           _rawScaleVisibility is { AnimationCount: > 0, TrackCount: > 0 } &&
+           !_rawScaleVisibility.HasAnyScaleCurve(nodeName);
+
     public bool TrySampleRawScale(int animationIndex, string nodeName,
         double seconds, OpenTK.Mathematics.Vector3 fallback,
         out OpenTK.Mathematics.Vector3 scale, string? animationName = null)
