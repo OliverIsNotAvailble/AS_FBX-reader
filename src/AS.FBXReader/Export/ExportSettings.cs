@@ -16,6 +16,7 @@ public sealed class ExportSettings
     public int Quality { get; set; } = 90;
     public bool TransparentBackground { get; set; } = true;
     public Color BackgroundColor { get; set; } = Color.Black;
+    public string? BackgroundImagePath { get; set; }
     public bool ExportAllAnimations { get; set; }
     public string OutputPath { get; set; } = string.Empty;
 
