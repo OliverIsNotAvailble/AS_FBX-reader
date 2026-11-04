@@ -297,6 +297,13 @@ public sealed class ViewerControl : UserControl
     public bool PremultiplyAlpha => _renderer.PremultiplyAlpha;
     public bool TransparentBackground => _renderer.TransparentBackground;
     public Color BackgroundColor => _renderer.BackgroundColor;
+    public string? BackgroundImagePath => _renderer.BackgroundImagePath;
+
+    public void SetBackgroundImage(string? path)
+    {
+        _renderer.SetBackgroundImage(path);
+        _gl.Invalidate();
+    }
 
     public void SetBackground(bool transparent, Color color)
     {
