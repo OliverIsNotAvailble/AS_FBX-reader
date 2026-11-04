@@ -4,6 +4,16 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## VLote 1.1.1 — 2026-11-04 — Fix intermittent IndexOutOfRange on consecutive FBX loads
+
+- Fixed a crash when switching from a model with many animations to another model with fewer animations. The previous FBX's selected animation index survived `AnimationPlayer.Rebuild()`; `SelectAnimation` could keep that invalid index, and `EvaluateNode` then accessed `_session.Animations[AnimationIndex]`, producing `System.ArgumentOutOfRangeException` before the new model's animation UI could select take 0.
+- `AnimationPlayer.Rebuild()` now clears the previous take, playback and scene-tree references before reconstructing the imported FBX. The MainForm animation dropdown still selects the new FBX's first animation normally after loading.
+- `SelectAnimation` now normalizes indices against **both** Assimp's imported animation count and the indexed take list, falling back to a safe rest pose for absent/invalid indices. The visibility evaluator uses the validated current take name, avoiding stale list access.
+- Added smoke regression checks for 12-take to 3-take switches, catalog-count mismatches, empty scenes, valid indices and playback reset after a rebuild.
+- This is a **reader-only** safety fix. FBX files, textures, export settings, fixed output layout, SpriteSkin visibility and VLote queue classification are unchanged.
+- Changed `Core/AnimationPlayer.cs`, `tests/VLoteSmoke/Program.cs`, version strings, workflow artifact label and this changelog.
+- Verification: Windows .NET 9 Release GitHub Actions build and VLote smoke suite required before distributing the new artifact; reproducing the exact user FBX sequence on Windows remains a recommended visual test.
+
 ## VLote 1.1 — 2026-11-04 — Live2D-style fixed outputs and shared background controls
 
 - Compared Live2D v0.1.10 (`AS_Live2D-reader/CHANGELOG.md`, `as_live2d/output.py`): fixed export root is **required**, **initially blank per app launch**, never saved to a model profile, preserved while switching models within the same program session; output subfolder derives from the actual model filename.

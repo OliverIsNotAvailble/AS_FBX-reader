@@ -59,6 +59,12 @@ public sealed class AnimationPlayer
 
     public void Rebuild()
     {
+        // A newly loaded FBX has a completely different animation catalog.
+        // Never reuse the previous model's selected index: it may point past
+        // the new model's takes. MainForm selects the first take after load.
+        AnimationIndex = -1;
+        Playing = false;
+        _root = null;
         _states.Clear();
         _channels.Clear();
         TimeSeconds = 0;
@@ -75,23 +81,36 @@ public sealed class AnimationPlayer
         // bone offsets; count them here so the user can see the recovery.
         RecoveredBoneOffsets = _session.Scene.Meshes
             .Sum(mesh => mesh.Bones.Count(bone => !IsFinite(MatrixUtil.ToOpenTk(bone.OffsetMatrix))));
-        SelectAnimation(AnimationIndex);
-        Evaluate();
+        SelectAnimation(-1);
     }
+
+    /// <summary>
+    /// A user-selected take may become invalid after switching FBX files.
+    /// -1 is the rest pose, not a valid indexed take. Check BOTH the imported
+    /// Assimp animation count and the session's indexed-take catalog.
+    /// </summary>
+    public static int NormalizeAnimationIndex(
+        int requested, int importedCount, int indexedTakeCount)
+        => requested >= 0 && requested < importedCount &&
+           requested < indexedTakeCount ? requested : -1;
 
     public void SelectAnimation(int index)
     {
+        var scene = _session.Scene;
+        index = NormalizeAnimationIndex(index,
+            scene?.AnimationCount ?? 0, _session.Animations.Count);
+
         AnimationIndex = index;
         TimeSeconds = 0;
         _channels.Clear();
 
-        if (_session.Scene is null || index < 0 || index >= _session.Scene.AnimationCount)
+        if (index < 0 || scene is null)
         {
             Evaluate();
             return;
         }
 
-        foreach (var channel in _session.Scene.Animations[index].NodeAnimationChannels)
+        foreach (var channel in scene.Animations[index].NodeAnimationChannels)
             _channels[channel.NodeName] = channel;
 
         Evaluate();
@@ -354,12 +373,15 @@ public sealed class AnimationPlayer
                 ? authored
                 : !state.CollapsedMesh);
 
-        var rawAvailable = AnimationIndex >= 0 && _session.HasRawScaleAnimations;
+        // The index is normalized on every selection/rebuild. Recheck the
+        // catalog here too so future callers cannot index stale take data.
+        var selectedTake = CurrentAnimationName;
+        var rawAvailable = selectedTake is not null && _session.HasRawScaleAnimations;
         var authoredScale = state.BaseScale;
         var hasAuthoredKeys = rawAvailable &&
             _session.TrySampleRawScale(AnimationIndex, state.Node.Name,
                 TimeSeconds, state.BaseScale, out authoredScale,
-                _session.Animations[AnimationIndex].Name);
+                selectedTake);
 
         if (hasAuthoredKeys && !state.CollapsedAncestor)
         {
@@ -369,8 +391,9 @@ public sealed class AnimationPlayer
             state.SourceVisible = IsVisibleScale(authoredScale);
         }
 
-        if (AnimationIndex >= 0 &&
+        if (selectedTake is not null &&
             _session.Scene is not null &&
+            AnimationIndex < _session.Scene.AnimationCount &&
             _channels.TryGetValue(state.Node.Name, out var channel))
         {
             var animation = _session.Scene.Animations[AnimationIndex];

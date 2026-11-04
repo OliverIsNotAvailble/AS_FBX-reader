@@ -13,6 +13,31 @@ static void Check(bool result, string description)
         throw new Exception("VLote smoke FAILED: " + description);
     Console.WriteLine("PASS: " + description);
 }
+// Regression: opening FBX B after selecting take 8 in FBX A (12 takes)
+ // must never try to read take 8 from B when B has only 3 takes.
+Check(AnimationPlayer.NormalizeAnimationIndex(8, 3, 3) == -1,
+    "switching from 12-take FBX to 3-take FBX drops stale selected index");
+Check(AnimationPlayer.NormalizeAnimationIndex(2, 3, 3) == 2,
+    "valid selected take remains intact");
+Check(AnimationPlayer.NormalizeAnimationIndex(2, 3, 1) == -1,
+    "mismatched imported/indexed animation catalogs are safe");
+Check(AnimationPlayer.NormalizeAnimationIndex(-1, 3, 3) == -1,
+    "rest pose stays valid when switching FBX");
+Check(AnimationPlayer.NormalizeAnimationIndex(0, 0, 0) == -1,
+    "zero-animation FBX is safe");
+
+using (var emptySession = new FbxSession())
+{
+    var newPlayer = new AnimationPlayer(emptySession);
+    newPlayer.SelectAnimation(8);
+    Check(newPlayer.AnimationIndex == -1,
+        "selecting a stale take against an empty model stays in rest pose");
+    newPlayer.Playing = true;
+    newPlayer.Rebuild();
+    Check(newPlayer.AnimationIndex == -1 && !newPlayer.Playing,
+        "rebuilding a model clears stale take and playback state");
+}
+
 // The same center-crop geometry must be used for the live OpenGL preview
 // and all offscreen export resolutions. No distortion, no letterbox.
 var imageSquare = BackgroundImageLayout.Cover(1024, 1024, 1024, 1024);
