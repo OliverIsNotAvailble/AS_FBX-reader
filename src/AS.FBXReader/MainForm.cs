@@ -808,6 +808,9 @@ public sealed partial class MainForm : Form
         var rawScaleNote = _session.RawScaleTrackCount > 0
             ? $" | raw FBX visibility: {_session.RawScaleTrackCount} curves in {_session.RawScaleAnimationCount} takes"
             : " | raw FBX visibility: unavailable (Assimp fallback)";
+        var staticRecoveryNote = _player.RecoveredStaticSpriteCount > 0
+            ? $" | {_player.RecoveredStaticSpriteCount} static SpriteSkins recovered"
+            : string.Empty;
         var sourceNote = _session.AuthoredModelCount > 0
             ? $" | FBX original: {_session.AuthoredModelCount} nodes, {_session.AuthoredHiddenNodes} hidden at rest"
             : string.Empty;
@@ -819,7 +822,7 @@ public sealed partial class MainForm : Form
             : string.Empty;
 
         _status.Text = $"{Path.GetFileName(path)} | {_session.Parts.Count} parts | " +
-            $"{_session.Animations.Count} animations{rawScaleNote}{duplicateNote}{scaleNote}{ancestorNote}{sourceNote}{bindNote} | " +
+            $"{_session.Animations.Count} animations{rawScaleNote}{staticRecoveryNote}{duplicateNote}{scaleNote}{ancestorNote}{sourceNote}{bindNote} | " +
             "VLote: preview principal, _EXT, _OK / _Null";
     }
 
