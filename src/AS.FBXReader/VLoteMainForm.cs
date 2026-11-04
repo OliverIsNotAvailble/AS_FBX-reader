@@ -22,7 +22,12 @@ public sealed partial class MainForm
     private readonly NumericUpDown _batchOffsetX = Number(-500, 500, 0);
     private readonly NumericUpDown _batchOffsetY = Number(-500, 500, 0);
     private readonly CheckBox _batchAllTakes = new() { Text = "Exportar TODAS as animações", Checked = true, AutoSize = true };
-    private readonly CheckBox _batchTransparent = new() { Text = "Fundo transparente (WebP/MOV)", Checked = true, AutoSize = true };
+    private readonly ComboBox _batchBackgroundMode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly Button _batchColorButton = new() { Text = "Escolher cor..." };
+    private readonly Button _batchImageButton = new() { Text = "Escolher imagem..." };
+    private readonly Label _batchImageLabel = new() { Text = "Nenhuma imagem selecionada", AutoSize = true, UseMnemonic = false };
+    private Color _batchBackgroundColor = Color.Black;
+    private string? _batchBackgroundImagePath;
     private readonly CheckBox _batchPma = new() { Text = "Premultiply Alpha (PMA)", Checked = true, AutoSize = true };
     private readonly Button _batchExport = new() { Text = "EXPORTAR → _OK", Height = 50, BackColor = Color.FromArgb(38, 104, 74), ForeColor = Color.White };
     private readonly Button _batchNull = new() { Text = "NULL → _Null", Height = 50, BackColor = Color.FromArgb(130, 58, 64), ForeColor = Color.White };
@@ -236,11 +241,26 @@ public sealed partial class MainForm
         Add(Field("Altura", _batchHeight));
         Add(Field("FPS", _batchFps));
         Add(Field("Qualidade", _batchQuality));
-        foreach (var check in new[] { _batchAllTakes, _batchTransparent, _batchPma })
+        foreach (var check in new[] { _batchAllTakes, _batchPma })
         {
             StyleCheck(check);
             Add(check, 2);
         }
+
+        Heading("FUNDO / BACKGROUND");
+        _batchBackgroundMode.Items.AddRange(["Transparente (WebP/MOV)", "Cor sólida", "Imagem"]);
+        _batchBackgroundMode.SelectedIndex = 0;
+        Add(Field("Modo", _batchBackgroundMode));
+        StyleButton(_batchColorButton, normalButtonColor);
+        StyleButton(_batchImageButton, normalButtonColor);
+        Add(Field("Cor", _batchColorButton));
+        Add(Field("Imagem", _batchImageButton));
+        _batchImageLabel.ForeColor = mutedColor;
+        _batchImageLabel.Font = outer.Font;
+        wrapLabels.Add(_batchImageLabel);
+        Add(_batchImageLabel, 5);
+        Add(TextLabel("Imagem ajustada ao quadro sem distorcer (recorte central).",
+            subtitle: true), 6);
 
         Heading("ENQUADRAMENTO DO PREVIEW");
         Add(Field("Zoom (%)", _batchZoom));
@@ -331,10 +351,57 @@ public sealed partial class MainForm
         };
         _batchFormat.SelectedIndexChanged += (_, _) =>
         {
-            if (_batchFormat.SelectedIndex == 1)
-                _batchTransparent.Checked = false;
-            _batchTransparent.Enabled = _batchFormat.SelectedIndex != 1;
+            if (_batchFormat.SelectedIndex == 1 && _batchBackgroundMode.SelectedIndex == 0)
+                _batchBackgroundMode.SelectedIndex = 1; // MP4 cannot store alpha.
+            ApplyBatchBackground();
         };
+        _batchBackgroundMode.SelectedIndexChanged += (_, _) =>
+        {
+            if (_batchFormat.SelectedIndex == 1 && _batchBackgroundMode.SelectedIndex == 0)
+            {
+                _batchBackgroundMode.SelectedIndex = 1;
+                return;
+            }
+            ApplyBatchBackground();
+        };
+        _batchColorButton.Click += (_, _) =>
+        {
+            using var picker = new ColorDialog { Color = _batchBackgroundColor, FullOpen = true };
+            if (picker.ShowDialog(this) != DialogResult.OK)
+                return;
+            _batchBackgroundColor = picker.Color;
+            _batchBackgroundMode.SelectedIndex = 1;
+            ApplyBatchBackground();
+        };
+        _batchImageButton.Click += (_, _) =>
+        {
+            using var picker = new OpenFileDialog
+            {
+                Title = "Selecionar imagem de fundo",
+                Filter = "Imagens (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif|Todos os arquivos (*.*)|*.*",
+                CheckFileExists = true,
+                Multiselect = false,
+                FileName = _batchBackgroundImagePath ?? string.Empty
+            };
+            if (picker.ShowDialog(this) != DialogResult.OK)
+                return;
+            try
+            {
+                using var bitmap = new Bitmap(picker.FileName);
+                if (bitmap.Width <= 0 || bitmap.Height <= 0)
+                    throw new InvalidDataException("Imagem inválida.");
+                _batchBackgroundImagePath = Path.GetFullPath(picker.FileName);
+                _batchBackgroundMode.SelectedIndex = 2;
+                ApplyBatchBackground();
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or
+                                       OutOfMemoryException or InvalidDataException)
+            {
+                MessageBox.Show(this, "Não consegui carregar a imagem: " + ex.Message,
+                    "VLote: fundo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        };
+        ApplyBatchBackground();
         _batchTab.Controls.Add(outer);
         _batchExport.Enabled = _batchNull.Enabled = false;
         _batchCancel.Enabled = false;
@@ -416,6 +483,41 @@ public sealed partial class MainForm
         _viewer.SetFraming(frame);
         SyncBatchFraming();
         LayoutMainPreview();
+    }
+
+    private void ApplyBatchBackground()
+    {
+        var mode = _batchBackgroundMode.SelectedIndex;
+        _batchColorButton.Visible = mode == 1;
+        _batchImageButton.Visible = mode == 2;
+        _batchImageLabel.Visible = mode == 2;
+        _batchColorButton.BackColor = _batchBackgroundColor;
+        _batchColorButton.ForeColor = _batchBackgroundColor.GetBrightness() < .45f
+            ? Color.White : Color.Black;
+        _batchImageLabel.Text = string.IsNullOrWhiteSpace(_batchBackgroundImagePath)
+            ? "Nenhuma imagem selecionada"
+            : Path.GetFileName(_batchBackgroundImagePath);
+        _batchImageLabel.Tag = _batchBackgroundImagePath;
+
+        _viewer.SetBackground(mode == 0, _batchBackgroundColor);
+        if (mode == 2 && !string.IsNullOrWhiteSpace(_batchBackgroundImagePath) &&
+            File.Exists(_batchBackgroundImagePath))
+        {
+            try
+            {
+                _viewer.SetBackgroundImage(_batchBackgroundImagePath);
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or OutOfMemoryException)
+            {
+                _viewer.SetBackgroundImage(null);
+                _batchImageLabel.Text = "Erro ao abrir imagem: " + ex.Message;
+            }
+        }
+        else
+        {
+            _viewer.SetBackgroundImage(null);
+        }
+        _viewer.InvalidateScene();
     }
 
     private void SetSharedPma(bool enabled)
@@ -594,7 +696,7 @@ public sealed partial class MainForm
             MessageBox.Show(this, "Nenhuma animação disponível.", "VLote");
             return;
         }
-        if (_batchTransparent.Checked && _batchFormat.SelectedIndex == 1)
+        if (_batchBackgroundMode.SelectedIndex == 0 && _batchFormat.SelectedIndex == 1)
         {
             MessageBox.Show(this,
                 "MP4 não preserva transparência. Use WebP/MOV ou desmarque fundo transparente.");
@@ -634,9 +736,20 @@ public sealed partial class MainForm
             Height = (int)_batchHeight.Value,
             Fps = (int)_batchFps.Value,
             Quality = (int)_batchQuality.Value,
-            TransparentBackground = _batchTransparent.Checked,
+            TransparentBackground = _batchBackgroundMode.SelectedIndex == 0,
+            BackgroundColor = _batchBackgroundColor,
+            BackgroundImagePath = _batchBackgroundMode.SelectedIndex == 2
+                ? _batchBackgroundImagePath : null,
             ExportAllAnimations = _batchAllTakes.Checked
         };
+        if (_batchBackgroundMode.SelectedIndex == 2 &&
+            (string.IsNullOrWhiteSpace(opts.BackgroundImagePath) ||
+             !File.Exists(opts.BackgroundImagePath)))
+        {
+            MessageBox.Show(this, "Selecione uma imagem de fundo válida antes de exportar.",
+                "VLote: fundo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
         if (opts.Format == ExportFormat.Mp4 &&
             (opts.Width % 2 != 0 || opts.Height % 2 != 0))
         {
@@ -654,6 +767,7 @@ public sealed partial class MainForm
         var originalTime = _player.TimeSeconds;
         var originalPlaying = _player.Playing;
         var originalBackground = _viewer.BackgroundColor;
+        var originalBackgroundImage = _viewer.BackgroundImagePath;
         var originalTransparency = _viewer.TransparentBackground;
         var originalFraming = _viewer.GetFraming();
         _player.Playing = false;
@@ -673,6 +787,7 @@ public sealed partial class MainForm
             // We render directly from the principal viewer. It owns the
             // OpenGL context and keeps the current camera, mesh toggles/PMA.
             _viewer.SetBackground(opts.TransparentBackground, opts.BackgroundColor);
+            _viewer.SetBackgroundImage(opts.BackgroundImagePath);
             for (var i = 0; i < takes.Count; i++)
             {
                 token.ThrowIfCancellationRequested();
@@ -774,6 +889,9 @@ public sealed partial class MainForm
                 _viewer.SetFraming(originalFraming);
             }
             _viewer.SetBackground(originalTransparency, originalBackground);
+            _viewer.SetBackgroundImage(
+                originalBackgroundImage is not null && File.Exists(originalBackgroundImage)
+                    ? originalBackgroundImage : null);
             _viewer.InvalidateScene();
             _batchCancellation?.Dispose();
             _batchCancellation = null;
