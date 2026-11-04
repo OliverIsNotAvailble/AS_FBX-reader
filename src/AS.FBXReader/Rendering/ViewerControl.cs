@@ -305,6 +305,12 @@ public sealed class ViewerControl : UserControl
         _gl.Invalidate();
     }
 
+    public void ReloadBackgroundImage()
+    {
+        _renderer.ReloadBackgroundImage();
+        _gl.Invalidate();
+    }
+
     public void SetBackground(bool transparent, Color color)
     {
         _renderer.SetBackground(transparent, color);
