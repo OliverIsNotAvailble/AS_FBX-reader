@@ -13,6 +13,11 @@ public sealed class FbxSession : IDisposable
     public string FilePath { get; private set; } = string.Empty;
     public Scene? Scene { get; private set; }
     public int DuplicateModelNamesFixed { get; private set; }
+    private readonly Dictionary<string, bool> _authoredVisibility = new(StringComparer.Ordinal);
+    public int AuthoredHiddenNodes => _authoredVisibility.Values.Count(value => !value);
+    public int AuthoredModelCount => _authoredVisibility.Count;
+    public bool TryGetAuthoredVisibility(string nodeName, out bool visible)
+        => _authoredVisibility.TryGetValue(nodeName, out visible);
     public List<ScenePart> Parts { get; } = new();
     private readonly List<ScenePart> _originalParts = new();
     public IReadOnlyList<ScenePart> OriginalParts => _originalParts;
@@ -101,6 +106,23 @@ public sealed class FbxSession : IDisposable
         {
             DuplicateModelNamesFixed =
                 FbxBinarySanitizer.MakeDuplicateModelNamesUnique(stagedFbx);
+
+            // Read the FBX's actual rest-state visibility before Assimp may
+            // replace imported node transforms with first-frame scale=0.
+            _authoredVisibility.Clear();
+            try
+            {
+                foreach (var pair in FbxAuthoredVisibility.Read(stagedFbx))
+                    _authoredVisibility.Add(pair.Key, pair.Value);
+            }
+            catch (Exception ex) when (
+                ex is IOException or InvalidDataException or OverflowException or
+                ArgumentException or EndOfStreamException)
+            {
+                // Unsupported FBX layout: keep the existing Assimp fallback
+                // instead of rejecting an otherwise loadable model.
+                _authoredVisibility.Clear();
+            }
 
             Scene = _context.ImportFile(
                 stagedFbx,
@@ -367,6 +389,7 @@ public sealed class FbxSession : IDisposable
         Scene = null;
         FilePath = string.Empty;
         DuplicateModelNamesFixed = 0;
+        _authoredVisibility.Clear();
         Parts.Clear();
         _originalParts.Clear();
         Animations.Clear();
