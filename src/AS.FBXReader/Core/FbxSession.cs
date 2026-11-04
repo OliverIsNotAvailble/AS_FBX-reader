@@ -14,6 +14,20 @@ public sealed class FbxSession : IDisposable
     public Scene? Scene { get; private set; }
     public int DuplicateModelNamesFixed { get; private set; }
     private readonly Dictionary<string, bool> _authoredVisibility = new(StringComparer.Ordinal);
+    private FbxRawScaleVisibility? _rawScaleVisibility;
+    public int RawScaleAnimationCount => _rawScaleVisibility?.AnimationCount ?? 0;
+    public int RawScaleTrackCount => _rawScaleVisibility?.TrackCount ?? 0;
+    public bool HasRawScaleAnimations => RawScaleTrackCount > 0;
+    public bool TrySampleRawScale(int animationIndex, string nodeName,
+        double seconds, OpenTK.Mathematics.Vector3 fallback,
+        out OpenTK.Mathematics.Vector3 scale)
+    {
+        if (_rawScaleVisibility is not null)
+            return _rawScaleVisibility.TrySampleScale(animationIndex,
+                nodeName, seconds, fallback, out scale);
+        scale = fallback;
+        return false;
+    }
     public int AuthoredHiddenNodes => _authoredVisibility.Values.Count(value => !value);
     public int AuthoredModelCount => _authoredVisibility.Count;
     public bool TryGetAuthoredVisibility(string nodeName, out bool visible)
@@ -122,6 +136,20 @@ public sealed class FbxSession : IDisposable
                 // Unsupported FBX layout: keep the existing Assimp fallback
                 // instead of rejecting an otherwise loadable model.
                 _authoredVisibility.Clear();
+            }
+
+            // Read original SpriteSkin switches by numeric FBX object IDs.
+            // Assimp sometimes invents 0-scale keys for meshes that have
+            // NO scaling animation in the authored FBX.
+            try
+            {
+                _rawScaleVisibility = FbxRawScaleVisibility.Read(stagedFbx);
+            }
+            catch (Exception ex) when (
+                ex is IOException or InvalidDataException or OverflowException or
+                ArgumentException or EndOfStreamException)
+            {
+                _rawScaleVisibility = null;
             }
 
             Scene = _context.ImportFile(
@@ -390,6 +418,7 @@ public sealed class FbxSession : IDisposable
         FilePath = string.Empty;
         DuplicateModelNamesFixed = 0;
         _authoredVisibility.Clear();
+        _rawScaleVisibility = null;
         Parts.Clear();
         _originalParts.Clear();
         Animations.Clear();
