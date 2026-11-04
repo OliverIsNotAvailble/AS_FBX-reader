@@ -2058,9 +2058,17 @@ public sealed partial class MainForm : Form
             (int)_batchHeight.Value,
             _viewer.GetFraming(),
             _batchOutputRoot.Text,
-            folder => _batchOutputRoot.Text = folder);
+            folder => _batchOutputRoot.Text = folder,
+            _batchBackgroundMode.SelectedIndex,
+            _batchBackgroundColor,
+            _batchBackgroundImagePath);
 
         dialog.ShowDialog(this);
+        // One shared background configuration for both export experiences.
+        _batchBackgroundColor = dialog.OutputBackgroundColor;
+        _batchBackgroundImagePath = dialog.OutputBackgroundImagePath;
+        _batchBackgroundMode.SelectedIndex = dialog.OutputBackgroundMode;
+        ApplyBatchBackground();
 
         // The same crop/aspect selected in the traditional exporter now
         // becomes visible in the MAIN preview. The batch sidebar Width/
