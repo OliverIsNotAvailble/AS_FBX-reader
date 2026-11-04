@@ -79,6 +79,34 @@ public sealed class FbxRawScaleVisibility
         return true;
     }
 
+    /// <summary>Describe the original compressed FBX curve, not the Assimp output.</summary>
+    public string DescribeTrack(int animationIndex, string modelName,
+        string? animationName = null)
+    {
+        if (!string.IsNullOrEmpty(animationName) &&
+            _stackIndexByName.TryGetValue(animationName, out var sourceIndex))
+            animationIndex = sourceIndex;
+
+        if (animationIndex < 0 || animationIndex >= _stacks.Count)
+            return "NO_MATCHING_SOURCE_TAKE";
+        if (!_stacks[animationIndex].TryGetValue(modelName, out var track))
+            return "NO_AUTHORED_SCALE_CURVE";
+
+        static string Describe(Curve? c)
+        {
+            if (c is null) return "missing";
+            if (c.Values.Length == 0) return "empty";
+            var min = c.Values.Min();
+            var max = c.Values.Max();
+            return string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "{0} keys, range [{1:0.###},{2:0.###}], first={3:0.###}, last={4:0.###}",
+                c.Values.Length, min, max, c.Values[0], c.Values[^1]);
+        }
+        return "X: " + Describe(track.X) +
+               " | Y: " + Describe(track.Y) +
+               " | Z: " + Describe(track.Z);
+    }
+
     public static FbxRawScaleVisibility Read(string path)
     {
         var output = new FbxRawScaleVisibility();
