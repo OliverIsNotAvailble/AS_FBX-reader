@@ -143,6 +143,52 @@ public sealed class AnimationPlayer
         return true;
     }
 
+    /// <summary>
+    /// Human-readable explanation of the actual runtime visibility decision.
+    /// Reports every ancestor, including which one blocks a sprite. This uses
+    /// the exact evaluated states used by the renderer, not a guessed rule.
+    /// </summary>
+    public string ExplainVisibility(string nodeName)
+    {
+        if (!_states.TryGetValue(nodeName, out var state))
+            return "MISSING_NODE: Assimp did not provide an animation state for " + nodeName;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append("effective=").Append(IsSourceVisible(nodeName) ? "ON" : "OFF");
+        var current = state;
+        while (current is not null)
+        {
+            var hasAuthored = _session.TryGetAuthoredVisibility(
+                current.Node.Name, out var authored);
+            var raw = current.BaseScale;
+            var hasRaw = AnimationIndex >= 0 &&
+                _session.TrySampleRawScale(AnimationIndex, current.Node.Name,
+                    TimeSeconds, current.BaseScale, out raw,
+                    CurrentAnimationName);
+            var hasAssimp = _channels.TryGetValue(current.Node.Name, out var channel);
+            sb.AppendLine();
+            sb.Append("    NODE=").Append(current.Node.Name);
+            sb.Append(" evaluated=").Append(current.SourceVisible ? "ON" : "OFF");
+            sb.Append(" authored=").Append(hasAuthored ?
+                (authored ? "ON" : "OFF") : "NOT_FOUND");
+            sb.Append(" rawScale=").Append(hasRaw
+                ? FormatVector(raw) : "NO_CURVE");
+            sb.Append(" assimpScaleKeys=").Append(hasAssimp ?
+                channel!.ScalingKeys.Count.ToString() : "NO_CHANNEL");
+            sb.Append(" importedBindScale=").Append(FormatVector(current.BaseScale));
+            sb.Append(" repairedMesh=").Append(current.CollapsedMesh);
+            sb.Append(" repairedParent=").Append(current.CollapsedAncestor);
+            if (!current.SourceVisible)
+                sb.Append("  <<< BLOCKS VISIBILITY");
+            current = current.Parent;
+        }
+        return sb.ToString();
+    }
+
+    private static string FormatVector(Vector3 value)
+        => string.Format(System.Globalization.CultureInfo.InvariantCulture,
+            "({0:0.####},{1:0.####},{2:0.####})", value.X, value.Y, value.Z);
+
     public Matrix4[] GetBoneMatrices(Node meshNode, Mesh mesh, bool rebuildBindPose = false)
     {
         var result = new Matrix4[mesh.BoneCount];
