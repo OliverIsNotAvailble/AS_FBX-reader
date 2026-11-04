@@ -28,6 +28,8 @@ public sealed partial class MainForm
     private readonly Label _batchImageLabel = new() { Text = "Nenhuma imagem selecionada", AutoSize = true, UseMnemonic = false };
     private Color _batchBackgroundColor = Color.Black;
     private string? _batchBackgroundImagePath;
+    private Control? _batchColorRow;
+    private Control? _batchImageRow;
     private readonly CheckBox _batchPma = new() { Text = "Premultiply Alpha (PMA)", Checked = true, AutoSize = true };
     private readonly Button _batchExport = new() { Text = "EXPORTAR → _OK", Height = 50, BackColor = Color.FromArgb(38, 104, 74), ForeColor = Color.White };
     private readonly Button _batchNull = new() { Text = "NULL → _Null", Height = 50, BackColor = Color.FromArgb(130, 58, 64), ForeColor = Color.White };
@@ -253,8 +255,10 @@ public sealed partial class MainForm
         Add(Field("Modo", _batchBackgroundMode));
         StyleButton(_batchColorButton, normalButtonColor);
         StyleButton(_batchImageButton, normalButtonColor);
-        Add(Field("Cor", _batchColorButton));
-        Add(Field("Imagem", _batchImageButton));
+        _batchColorRow = Field("Cor", _batchColorButton);
+        _batchImageRow = Field("Imagem", _batchImageButton);
+        Add(_batchColorRow);
+        Add(_batchImageRow);
         _batchImageLabel.ForeColor = mutedColor;
         _batchImageLabel.Font = outer.Font;
         wrapLabels.Add(_batchImageLabel);
@@ -488,8 +492,8 @@ public sealed partial class MainForm
     private void ApplyBatchBackground()
     {
         var mode = _batchBackgroundMode.SelectedIndex;
-        _batchColorButton.Visible = mode == 1;
-        _batchImageButton.Visible = mode == 2;
+        if (_batchColorRow is not null) _batchColorRow.Visible = mode == 1;
+        if (_batchImageRow is not null) _batchImageRow.Visible = mode == 2;
         _batchImageLabel.Visible = mode == 2;
         _batchColorButton.BackColor = _batchBackgroundColor;
         _batchColorButton.ForeColor = _batchBackgroundColor.GetBrightness() < .45f
