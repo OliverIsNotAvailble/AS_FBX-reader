@@ -16,6 +16,7 @@ public sealed class FbxRawScaleVisibility
 {
     private const double FbxTicksPerSecond = 46186158000.0;
     private readonly List<Dictionary<string, ScaleTrack>> _stacks = new();
+    private readonly Dictionary<string, int> _stackIndexByName = new(StringComparer.Ordinal);
     public int AnimationCount => _stacks.Count;
     public int TrackCount => _stacks.Sum(stack => stack.Count);
 
@@ -61,9 +62,15 @@ public sealed class FbxRawScaleVisibility
     }
 
     public bool TrySampleScale(int animationIndex, string modelName,
-        double seconds, Vector3 fallback, out Vector3 scale)
+        double seconds, Vector3 fallback, out Vector3 scale,
+        string? animationName = null)
     {
         scale = fallback;
+        // Assimp may reorder FBX takes on import. Match the authored take
+        // by name when available, and fall back to source index otherwise.
+        if (!string.IsNullOrEmpty(animationName) &&
+            _stackIndexByName.TryGetValue(animationName, out var sourceIndex))
+            animationIndex = sourceIndex;
         if (animationIndex < 0 || animationIndex >= _stacks.Count ||
             !_stacks[animationIndex].TryGetValue(modelName, out var track))
             return false;
@@ -86,6 +93,7 @@ public sealed class FbxRawScaleVisibility
 
         var models = new Dictionary<long, string>();
         var stackIds = new List<long>();
+        var stackNames = new Dictionary<long, string>();
         var layerIds = new HashSet<long>();
         var nodeIds = new HashSet<long>();
         var curves = new Dictionary<long, Curve>();
@@ -99,7 +107,7 @@ public sealed class FbxRawScaleVisibility
 
             if (header.Name == "Objects")
                 ParseObjects(br, header.End, wide, models, stackIds,
-                    layerIds, nodeIds, curves);
+                    stackNames, layerIds, nodeIds, curves);
             else if (header.Name == "Connections")
                 ParseConnections(br, header.End, wide, connections);
 
@@ -140,8 +148,14 @@ public sealed class FbxRawScaleVisibility
 
         var stackPositions = stackIds.Select((id, index) => (id, index))
             .ToDictionary(x => x.id, x => x.index);
-        foreach (var _ in stackIds)
+        foreach (var stackId in stackIds)
+        {
+            var index = output._stacks.Count;
             output._stacks.Add(new Dictionary<string, ScaleTrack>(StringComparer.Ordinal));
+            if (stackNames.TryGetValue(stackId, out var takeName) &&
+                !string.IsNullOrEmpty(takeName))
+                output._stackIndexByName.TryAdd(takeName, index);
+        }
 
         foreach (var (nodeId, modelId) in nodeToModel)
         {
@@ -175,7 +189,8 @@ public sealed class FbxRawScaleVisibility
 
     private static void ParseObjects(BinaryReader br, long end, bool wide,
         Dictionary<long, string> models, List<long> stackIds,
-        HashSet<long> layerIds, HashSet<long> nodeIds, Dictionary<long, Curve> curves)
+        Dictionary<long, string> stackNames, HashSet<long> layerIds,
+        HashSet<long> nodeIds, Dictionary<long, Curve> curves)
     {
         var stream = br.BaseStream;
         while (HasNode(stream, wide, end))
@@ -201,7 +216,14 @@ public sealed class FbxRawScaleVisibility
                     var id = ReadProperty(br);
                     if (id is long n)
                     {
-                        if (h.Name == "AnimationStack") stackIds.Add(n);
+                        if (h.Name == "AnimationStack")
+                        {
+                            stackIds.Add(n);
+                            if (h.PropertyCount >= 2 && ReadProperty(br) is string take)
+                                stackNames[n] = take.Split('\0')[0]
+                                    .Replace("AnimStack", string.Empty,
+                                        StringComparison.OrdinalIgnoreCase).Trim();
+                        }
                         else if (h.Name == "AnimationLayer") layerIds.Add(n);
                         else nodeIds.Add(n);
                     }
