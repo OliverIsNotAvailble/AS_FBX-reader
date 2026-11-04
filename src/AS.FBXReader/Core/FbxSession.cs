@@ -20,11 +20,11 @@ public sealed class FbxSession : IDisposable
     public bool HasRawScaleAnimations => RawScaleTrackCount > 0;
     public bool TrySampleRawScale(int animationIndex, string nodeName,
         double seconds, OpenTK.Mathematics.Vector3 fallback,
-        out OpenTK.Mathematics.Vector3 scale)
+        out OpenTK.Mathematics.Vector3 scale, string? animationName = null)
     {
         if (_rawScaleVisibility is not null)
             return _rawScaleVisibility.TrySampleScale(animationIndex,
-                nodeName, seconds, fallback, out scale);
+                nodeName, seconds, fallback, out scale, animationName);
         scale = fallback;
         return false;
     }
