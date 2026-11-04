@@ -4,6 +4,18 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## VLote 1.1 — 2026-11-04 — Live2D-style fixed outputs and shared background controls
+
+- Compared Live2D v0.1.10 (`AS_Live2D-reader/CHANGELOG.md`, `as_live2d/output.py`): fixed export root is **required**, **initially blank per app launch**, never saved to a model profile, preserved while switching models within the same program session; output subfolder derives from the actual model filename.
+- Added a separate **Saída fixa** picker and editable path on the VLote sidebar. Input scan root and output root are distinct. Batch export now validates that fixed root exists before rendering and creates `<fixed root>/<FBX filename without .fbx>/` only when encoding begins. It no longer automatically writes new videos under `_EXT`. Korean/Unicode names remain intact; existing completed output folders are not overwritten (numeric suffix on collision).
+- **Kept existing _OK / _Null classification** and safe queue folder moving unchanged. Output roots inside the source group being moved are rejected; failed/canceled exports leave the FBX pending. Completed batch files are staged and published as one directory; old `_EXT` contents are untouched.
+- `Export / Framing` now has three actual background modes: **transparent**, **solid color**, and **image** (PNG/JPG/JPEG/BMP/GIF). Image selection and reload appear in both exporters. The single exporter uses the same center-crop OpenGL preview/export path as VLote; no post-export image replacement.
+- The single export window now uses the same **session fixed root** as VLote. Every animation, including a single selected take, is saved inside `<fixed root>/<FBX filename>/`. Clicking other takes, switching formats, opening a different FBX, or returning to VLote does not silently overwrite the fixed output path. Neither profiles nor settings persist that folder between launches.
+- Background mode/color/image is synchronized between the VLote sidebar and Export / Framing when switching windows. MP4 continues to require an opaque background, while WebP/MOV can remain transparent. Added deferred background texture reload after external edits, on the active GL context.
+- Introduced pure path helper `Batch/FixedOutputFolder.cs` and extended `tests/VLoteSmoke/Program.cs` for Unicode, .FBX case-insensitive filename stem, absent fixed path, nonexistent folder, no premature output folder, collision safety and existing render/background tests.
+- Updated `VLoteMainForm.cs`, `MainForm.cs`, `ExportDialog.cs`, `SceneRenderer.cs`, `ViewerControl.cs`, `AS.FBXReader.csproj`, `build.yml`, tests and this changelog. No changes to the working SpriteSkin visibility recovery.
+- Validation: Windows .NET 9 Release compilation and VLote smoke suite completed successfully before version stamping. Windows GUI/GL preview and actual FFmpeg background-image encoding still require an interactive test with a real user FBX.
+
 ## VLote 0.3 — 2026-11-02 — exact output aspect in MAIN preview
 
 - Fixed a visible preview/export mismatch: the original editor used the full available window (often 16:9) even when the VLote output setting was 1024×1024 (1:1). `SceneRenderer.BuildView` uses the viewport's aspect ratio for camera projection, so objects could be positioned/framed differently in the final PNG/FFmpeg export.
