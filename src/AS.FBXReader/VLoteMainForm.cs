@@ -33,6 +33,7 @@ public sealed partial class MainForm
     private readonly ComboBox _batchBackgroundMode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly Button _batchColorButton = new() { Text = "Escolher cor..." };
     private readonly Button _batchImageButton = new() { Text = "Escolher imagem..." };
+    private readonly Button _batchReloadImageButton = new() { Text = "Recarregar imagem" };
     private readonly Label _batchImageLabel = new() { Text = "Nenhuma imagem selecionada", AutoSize = true, UseMnemonic = false };
     private Color _batchBackgroundColor = Color.Black;
     private string? _batchBackgroundImagePath;
@@ -279,6 +280,8 @@ public sealed partial class MainForm
         _batchImageRow = Field("Imagem", _batchImageButton);
         Add(_batchColorRow);
         Add(_batchImageRow);
+        StyleButton(_batchReloadImageButton, normalButtonColor);
+        Add(_batchReloadImageButton, 2);
         _batchImageLabel.ForeColor = mutedColor;
         _batchImageLabel.Font = outer.Font;
         wrapLabels.Add(_batchImageLabel);
@@ -411,6 +414,14 @@ public sealed partial class MainForm
             _batchBackgroundMode.SelectedIndex = 1;
             ApplyBatchBackground();
         };
+        _batchReloadImageButton.Click += (_, _) =>
+        {
+            if (_batchBackgroundMode.SelectedIndex != 2 ||
+                string.IsNullOrWhiteSpace(_batchBackgroundImagePath))
+                return;
+            _viewer.ReloadBackgroundImage();
+            ApplyBatchBackground();
+        };
         _batchImageButton.Click += (_, _) =>
         {
             using var picker = new OpenFileDialog
@@ -529,6 +540,9 @@ public sealed partial class MainForm
         if (_batchColorRow is not null) _batchColorRow.Visible = mode == 1;
         if (_batchImageRow is not null) _batchImageRow.Visible = mode == 2;
         _batchImageLabel.Visible = mode == 2;
+        _batchReloadImageButton.Visible = mode == 2;
+        _batchReloadImageButton.Enabled = mode == 2 &&
+            !string.IsNullOrWhiteSpace(_batchBackgroundImagePath);
         _batchColorButton.BackColor = _batchBackgroundColor;
         _batchColorButton.ForeColor = _batchBackgroundColor.GetBrightness() < .45f
             ? Color.White : Color.Black;
