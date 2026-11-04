@@ -28,6 +28,13 @@ public sealed class FbxSession : IDisposable
         scale = fallback;
         return false;
     }
+    public string DescribeRawScaleTrack(int animationIndex, string nodeName,
+        string? animationName = null)
+        => _rawScaleVisibility is null
+            ? "SOURCE_SCALE_READER_UNAVAILABLE"
+            : _rawScaleVisibility.DescribeTrack(animationIndex,
+                nodeName, animationName);
+
     public int AuthoredHiddenNodes => _authoredVisibility.Values.Count(value => !value);
     public int AuthoredModelCount => _authoredVisibility.Count;
     public bool TryGetAuthoredVisibility(string nodeName, out bool visible)
