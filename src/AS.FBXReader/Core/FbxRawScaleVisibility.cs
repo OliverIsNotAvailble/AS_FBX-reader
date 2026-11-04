@@ -19,6 +19,12 @@ public sealed class FbxRawScaleVisibility
     private readonly Dictionary<string, int> _stackIndexByName = new(StringComparer.Ordinal);
     public int AnimationCount => _stacks.Count;
     public int TrackCount => _stacks.Sum(stack => stack.Count);
+    // Some AssetStudio exports serialize every static SpriteSkin at scale=0
+    // but omit their scale tracks from ALL takes. Such meshes form the fixed
+    // body/head/limbs while animated alternatives have explicit 0/1 curves.
+    public bool HasAnyScaleCurve(string modelName)
+        => _stacks.Any(stack => stack.ContainsKey(modelName));
+
 
     private sealed record Curve(long[] Times, float[] Values)
     {
