@@ -34,6 +34,14 @@ public sealed class AnimationPlayer
     public int RecoveredBoneOffsets { get; private set; }
     public int RestoredCollapsedMeshes { get; private set; }
     public int RestoredCollapsedAncestors { get; private set; }
+    public int RecoveredStaticSpriteCount
+        => _states.Values.Count(state =>
+            _session.IsUnanimatedStaticSprite(state.Node.Name, state.CollapsedMesh));
+
+    public bool IsRecoveredStaticSprite(string nodeName)
+        => _states.TryGetValue(nodeName, out var state) &&
+           _session.IsUnanimatedStaticSprite(state.Node.Name, state.CollapsedMesh);
+
     public string? CurrentAnimationName
         => AnimationIndex >= 0 && AnimationIndex < _session.Animations.Count
             ? _session.Animations[AnimationIndex].Name
