@@ -25,6 +25,7 @@ public sealed class SceneRenderer : IDisposable
     private Color _backgroundColor = Color.FromArgb(28, 28, 28);
     private string? _backgroundImagePath;
     private Size _backgroundImageSize;
+    private bool _reloadBackgroundImage;
     private FramingState _framing = new();
 
     public bool PremultiplyAlpha => _premultiplyAlpha;
@@ -97,6 +98,12 @@ public sealed class SceneRenderer : IDisposable
         using var bitmap = new Bitmap(fullPath); // validates image before export
         _backgroundImageSize = bitmap.Size;
         _backgroundImagePath = fullPath;
+    }
+
+    public void ReloadBackgroundImage()
+    {
+        // TextureCache.Evict must happen on the active OpenGL context.
+        _reloadBackgroundImage = true;
     }
 
     public FramingState CaptureFramingReference()
@@ -261,6 +268,14 @@ public sealed class SceneRenderer : IDisposable
     {
         if (_backgroundImagePath is null || _backgroundImageSize.IsEmpty)
             return;
+
+        if (_reloadBackgroundImage)
+        {
+            _textures.Evict(_backgroundImagePath);
+            _reloadBackgroundImage = false;
+            using var image = new Bitmap(_backgroundImagePath);
+            _backgroundImageSize = image.Size;
+        }
 
         var texture = _textures.GetOrLoad(_backgroundImagePath);
         if (texture == 0)
