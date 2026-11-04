@@ -25,6 +25,14 @@ public sealed class FbxRawScaleVisibility
     public bool HasAnyScaleCurve(string modelName)
         => _stacks.Any(stack => stack.ContainsKey(modelName));
 
+    // A static skinned mesh may have a zero-scale bind in AssetStudio FBX
+    // yet never be animated. Recover only this specific layout, and never
+    // a mesh that has any authored scale switch in any animation.
+    public bool IsNeverKeyedCollapsedSpriteSkin(string modelName, bool collapsedBind)
+        => collapsedBind && AnimationCount > 0 && TrackCount > 0 &&
+           modelName.StartsWith("__spriteskin_", StringComparison.Ordinal) &&
+           !HasAnyScaleCurve(modelName);
+
 
     private sealed record Curve(long[] Times, float[] Values)
     {
