@@ -72,6 +72,8 @@ finally
         File.Delete(visibilityFixturePath);
 }
 
+FbxRawVisibilitySmoke.Run(Check);
+
 var root = Path.Combine(Path.GetTempPath(), "fbx_vlote_smoke_" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 try
