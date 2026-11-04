@@ -99,6 +99,38 @@ finally
 
 FbxRawVisibilitySmoke.Run(Check);
 
+// Match Live2D v0.1.10: no automatic output path, no folder until
+// encoding starts, and every FBX uses its filename (not UI display name).
+var rootOut = Path.Combine(Path.GetTempPath(), "fbx_fixed_" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(rootOut);
+try
+{
+    Check(AS.FBXReader.Batch.FixedOutputFolder.ModelFolderName(
+        @"C:\\models\\애니메이션01.fbx") == "애니메이션01",
+        "fixed output preserves Korean FBX filename");
+    Check(AS.FBXReader.Batch.FixedOutputFolder.ModelFolderName("Scene_A.FBX") == "Scene_A",
+        "FBX model folder uses source filename stem case-insensitively");
+    var pathOut = AS.FBXReader.Batch.FixedOutputFolder.ForModel(rootOut, "Lina Character.fbx");
+    Check(pathOut == Path.Combine(rootOut, "Lina Character"),
+        "fixed root exports into exact model-FBX named subfolder");
+    Check(!Directory.Exists(pathOut),
+        "preview never creates output folders before encoding");
+    var blankFails = false;
+    try { AS.FBXReader.Batch.FixedOutputFolder.ForModel(" ", "A.fbx"); }
+    catch (ArgumentException e) { blankFails = e.Message.Contains("não definida"); }
+    Check(blankFails, "blank fixed output requires explicit selection");
+    var missingFails = false;
+    try { AS.FBXReader.Batch.FixedOutputFolder.ForModel(
+        Path.Combine(rootOut, "missing"), "A.fbx"); }
+    catch (DirectoryNotFoundException) { missingFails = true; }
+    Check(missingFails, "non-existing fixed root is rejected");
+    Directory.CreateDirectory(pathOut);
+    Check(AS.FBXReader.Batch.FixedOutputFolder.AvailableDestination(pathOut) ==
+        pathOut + " (1)", "existing model outputs are not silently overwritten");
+}
+finally { if (Directory.Exists(rootOut)) Directory.Delete(rootOut, true); }
+
+
 var root = Path.Combine(Path.GetTempPath(), "fbx_vlote_smoke_" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 try
