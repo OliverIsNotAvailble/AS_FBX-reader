@@ -293,13 +293,10 @@ public sealed class AnimationPlayer
                 : !state.CollapsedMesh);
 
         var rawAvailable = AnimationIndex >= 0 && _session.HasRawScaleAnimations;
+        var authoredScale = state.BaseScale;
         var hasAuthoredKeys = rawAvailable &&
             _session.TrySampleRawScale(AnimationIndex, state.Node.Name,
-                TimeSeconds, state.BaseScale, out var authoredScale);
-        // C# definite assignment: when there is no authored track, the
-        // fallback is the recoverable bind scale.
-        if (!hasAuthoredKeys)
-            authoredScale = state.BaseScale;
+                TimeSeconds, state.BaseScale, out authoredScale);
 
         if (hasAuthoredKeys && !state.CollapsedAncestor)
         {
