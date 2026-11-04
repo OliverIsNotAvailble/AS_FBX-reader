@@ -10,6 +10,14 @@ namespace AS.FBXReader;
 public sealed partial class MainForm
 {
     private readonly TextBox _batchRoot = new() { PlaceholderText = "Pasta raiz dos FBX..." };
+    // Session-only fixed output: ALWAYS blank at program startup, and kept
+    // when the batch switches between models. Never stored in FBX profiles.
+    private readonly TextBox _batchOutputRoot = new() {
+        PlaceholderText = "Selecione a pasta de saída fixa (obrigatória)..."
+    };
+    private readonly Button _batchOutputBrowse = new() {
+        Text = "Escolher saída fixa...", Height = 38
+    };
     private readonly Label _batchCurrentLabel = new();
     private readonly Label _batchCounterLabel = new();
     private readonly Label _batchMessage = new();
@@ -221,6 +229,18 @@ public sealed partial class MainForm
         Add(_batchBrowse);
         Add(_batchScan, 11);
 
+        Heading("SAÍDA FIXA (POR SESSÃO)");
+        _batchOutputRoot.Font = outer.Font;
+        _batchOutputRoot.AutoSize = false;
+        _batchOutputRoot.BackColor = Color.White;
+        _batchOutputRoot.ForeColor = Color.FromArgb(25, 31, 41);
+        _batchOutputRoot.MinimumSize = new Size(0, Math.Max(35, outer.Font.Height + 11));
+        Add(_batchOutputRoot);
+        StyleButton(_batchOutputBrowse, normalButtonColor);
+        Add(_batchOutputBrowse, 4);
+        Add(TextLabel("Começa vazia a cada abertura. Exporta em Saída fixa / nome-do-FBX / animações.",
+            subtitle: true), 9);
+
         _batchCurrentLabel.ForeColor = textColor;
         _batchCurrentLabel.Font = new Font(outer.Font, FontStyle.Bold);
         _batchCurrentLabel.AutoSize = true;
@@ -289,7 +309,7 @@ public sealed partial class MainForm
         wrapLabels.Add(_batchMessage);
         Add(_batchMessage, 10);
 
-        Add(TextLabel("Vídeos → _EXT  |  Arquivos → _OK / _Null",
+        Add(TextLabel("Vídeos → Saída fixa / FBX  |  Originais → _OK / _Null",
             subtitle: true), 4);
         Add(TextLabel("A pasta só é movida depois de classificar todos os FBX dela.",
             subtitle: true), 12);
@@ -326,6 +346,20 @@ public sealed partial class MainForm
                 _batchRoot.Text = picker.SelectedPath;
                 ScanBatch();
             }
+        };
+        _batchOutputBrowse.Click += (_, _) =>
+        {
+            if (_batchBusy) return;
+            using var picker = new FolderBrowserDialog
+            {
+                Description = "Selecione a pasta FIXA onde serão exportados os FBX",
+                UseDescriptionForTitle = true,
+                SelectedPath = Directory.Exists(_batchOutputRoot.Text)
+                    ? _batchOutputRoot.Text
+                    : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+            };
+            if (picker.ShowDialog(this) == DialogResult.OK)
+                _batchOutputRoot.Text = picker.SelectedPath;
         };
         _batchScan.Click += (_, _) => ScanBatch();
         _batchWidth.ValueChanged += (_, _) => LayoutMainPreview();
@@ -578,6 +612,8 @@ public sealed partial class MainForm
         _batchScan.Enabled = !_batchBusy;
         _batchBrowse.Enabled = !_batchBusy;
         _batchRoot.Enabled = !_batchBusy;
+        _batchOutputRoot.Enabled = !_batchBusy;
+        _batchOutputBrowse.Enabled = !_batchBusy;
         _batchControls?.SuspendLayout();
         try
         {
@@ -587,7 +623,8 @@ public sealed partial class MainForm
                 if (c == _batchCancel || c == _batchNull || c == _batchExport ||
                     c == _batchCurrentLabel || c == _batchCounterLabel ||
                     c == _batchMessage || c == _batchBrowse || c == _batchScan ||
-                    c == _batchRoot)
+                    c == _batchRoot || c == _batchOutputRoot ||
+                    c == _batchOutputBrowse)
                     continue;
                 c.Enabled = !_batchBusy;
             }
@@ -691,6 +728,32 @@ public sealed partial class MainForm
             return;
         var entry = _batchEntry;
         var queue = _batchQueue;
+        // Capture and validate once before export; changing models must not
+        // silently change the destination. No folder created during preview.
+        string desiredOutput;
+        try
+        {
+            desiredOutput = FixedOutputFolder.ForModel(
+                _batchOutputRoot.Text, entry.FilePath);
+            // Source groups are moved to _OK/_Null; never put output inside
+            // one of those groups or it would be moved along with the FBX.
+            var relative = Path.GetRelativePath(entry.GroupPath,
+                Path.GetDirectoryName(desiredOutput)!);
+            if (relative == "." ||
+                (!relative.StartsWith(".." + Path.DirectorySeparatorChar,
+                    StringComparison.Ordinal) && relative != ".." &&
+                 !Path.IsPathRooted(relative)))
+                throw new InvalidOperationException(
+                    "A saída fixa não pode ficar dentro da pasta de origem que o VLote moverá.");
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or
+                                   UnauthorizedAccessException or InvalidOperationException)
+        {
+            MessageBox.Show(this, ex.Message, "Pasta de saída fixa não definida",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            _batchOutputRoot.Focus();
+            return;
+        }
         var takes = _batchAllTakes.Checked
             ? _session.Animations.ToList()
             : _animations.SelectedItem is AnimationTake take
@@ -780,7 +843,10 @@ public sealed partial class MainForm
         {
             await Task.Yield();
             token.ThrowIfCancellationRequested();
-            var destination = queue.ExportDestination(entry);
+            // Same layout as Live2D: <fixed root>/<FBX stem>/<takes>.
+            // Existing finished folders are never overwritten by a later
+            // FBX with the same basename in another source group.
+            var destination = FixedOutputFolder.AvailableDestination(desiredOutput);
             var parent = Path.GetDirectoryName(destination)!;
             Directory.CreateDirectory(parent);
             exportStage = Path.Combine(parent,
@@ -833,7 +899,7 @@ public sealed partial class MainForm
             }
 
             token.ThrowIfCancellationRequested();
-            // Publish all or nothing to the final _EXT location.
+            // Publish all or nothing into the fixed model-specific folder.
             Directory.Move(exportStage, destination);
             exportStage = null;
             publishedDestination = destination;
@@ -858,7 +924,7 @@ public sealed partial class MainForm
                     "Os vídeos já foram exportados e NÃO foram apagados!\r\n\r\n" +
                     $"Pasta: {publishedDestination}\r\n\r\n" +
                     "O erro aconteceu somente ao organizar o FBX original. " +
-                    "Não exporte tudo novamente antes de conferir _EXT.\r\n\r\n" +
+                    "Não exporte tudo novamente antes de conferir a saída fixa.\r\n\r\n" +
                     ex, "VLote: vídeos salvos; organização falhou",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
