@@ -58,6 +58,9 @@ public sealed class ExportDialog : Form
     public int OutputWidth => (int)_width.Value;
     public int OutputHeight => (int)_height.Value;
     public FramingState OutputFraming => _preview.GetFraming();
+    public int OutputBackgroundMode => _backgroundMode.SelectedIndex;
+    public Color OutputBackgroundColor => _backgroundColor;
+    public string? OutputBackgroundImagePath => _backgroundImagePath;
 
     private bool BatchExport => _allAnimations.Checked || _selectedAnimations.Checked;
 
@@ -69,7 +72,10 @@ public sealed class ExportDialog : Form
         int initialHeight = 2048,
         FramingState? initialFraming = null,
         string fixedOutputRoot = "",
-        Action<string>? fixedOutputChanged = null)
+        Action<string>? fixedOutputChanged = null,
+        int initialBackgroundMode = 0,
+        Color? initialBackgroundColor = null,
+        string? initialBackgroundImagePath = null)
     {
         _fixedOutputChanged = fixedOutputChanged;
         _session = session;
@@ -90,7 +96,13 @@ public sealed class ExportDialog : Form
         AutoScaleMode = AutoScaleMode.Font;
         Font = new Font("Segoe UI", 10.5F);
 
+        _backgroundColor = initialBackgroundColor ?? Color.Black;
+        _backgroundImagePath = initialBackgroundImagePath;
         BuildUi(premultiplyAlpha);
+        _backgroundMode.SelectedIndex = Math.Clamp(initialBackgroundMode, 0, 2);
+        _backgroundButton.BackColor = _backgroundColor;
+        _backgroundButton.ForeColor = _backgroundColor.GetBrightness() < 0.45f
+            ? Color.White : Color.Black;
         _output.Text = fixedOutputRoot; // session-only; NEVER generated from source FBX
         UpdateDefaultOutput();
         // Mirror the desired output format from the main viewport instead
