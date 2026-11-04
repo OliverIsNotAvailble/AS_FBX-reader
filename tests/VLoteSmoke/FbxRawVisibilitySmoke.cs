@@ -37,6 +37,9 @@ internal static class FbxRawVisibilitySmoke
                 "second animation's visibility is independent from the first");
             check(!tracks.TrySampleScale(0, "SpriteB", 0, one, out _),
                 "mesh without authored keys is not given invented 0-scale curves");
+            check(tracks.TrySampleScale(1, "SpriteA", 0, one, out var named, "Take One") &&
+                  Math.Abs(named.X) < 0.001f,
+                "authored take name overrides a reordered Assimp animation index");
         }
         finally
         {
