@@ -285,10 +285,16 @@ public sealed class AnimationPlayer
     private void EvaluateNode(NodeState state)
     {
         var local = state.BaseLocal;
-        // Static hidden SpriteRenderers remain hidden. A collapsed ancestor
-        // (e.g. AssetStudio's TopmostCanvas) is restored at import; it does
-        // not by itself mean every child is invisible.
-        state.SourceVisible = !state.CollapsedMesh;
+        // IMPORTANT: Assimp's imported bind pose is not necessarily the
+        // authored FBX default. Many AssetStudio sprites have a collapsed
+        // imported mesh transform even though their actual FBX model scaling
+        // defaults to (1,1,1). Only the raw FBX source decides initial
+        // visibility; per-take 0/1 scale keys override this each frame.
+        // Collapsed canvases remain recoverable as in VLote 0.4.
+        state.SourceVisible = state.CollapsedAncestor || (
+            _session.TryGetAuthoredVisibility(state.Node.Name, out var authored)
+                ? authored
+                : !state.CollapsedMesh);
 
         if (AnimationIndex >= 0 &&
             _session.Scene is not null &&
