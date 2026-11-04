@@ -285,16 +285,29 @@ public sealed class AnimationPlayer
     private void EvaluateNode(NodeState state)
     {
         var local = state.BaseLocal;
-        // IMPORTANT: Assimp's imported bind pose is not necessarily the
-        // authored FBX default. Many AssetStudio sprites have a collapsed
-        // imported mesh transform even though their actual FBX model scaling
-        // defaults to (1,1,1). Only the raw FBX source decides initial
-        // visibility; per-take 0/1 scale keys override this each frame.
-        // Collapsed canvases remain recoverable as in VLote 0.4.
+        // Only the FBX-authored default determines initial visibility.
+        // A collapsed Assimp bind pose must not hide a mesh in every take.
         state.SourceVisible = state.CollapsedAncestor || (
             _session.TryGetAuthoredVisibility(state.Node.Name, out var authored)
                 ? authored
                 : !state.CollapsedMesh);
+
+        var rawAvailable = AnimationIndex >= 0 && _session.HasRawScaleAnimations;
+        var hasAuthoredKeys = rawAvailable &&
+            _session.TrySampleRawScale(AnimationIndex, state.Node.Name,
+                TimeSeconds, state.BaseScale, out var authoredScale);
+        // C# definite assignment: when there is no authored track, the
+        // fallback is the recoverable bind scale.
+        if (!hasAuthoredKeys)
+            authoredScale = state.BaseScale;
+
+        if (hasAuthoredKeys && !state.CollapsedAncestor)
+        {
+            // The original FBX's per-take 0/1 sprite switches always win
+            // over Assimp's animation channel, which may contain synthetic
+            // zero keys for sprites that never had any scale curve at all.
+            state.SourceVisible = IsVisibleScale(authoredScale);
+        }
 
         if (AnimationIndex >= 0 &&
             _session.Scene is not null &&
@@ -304,45 +317,36 @@ public sealed class AnimationPlayer
             var tps = animation.TicksPerSecond > 0.000001 ? animation.TicksPerSecond : 25.0;
             var ticks = TimeSeconds * tps;
 
-            var scale = SampleVector(channel.ScalingKeys, ticks, state.BaseScale);
-            if (channel.ScalingKeys.Count > 0)
+            var scale = state.BaseScale;
+            if (rawAvailable)
             {
-                // SpriteRenderer enabled/disabled is encoded in FBX as
-                // animated (1,1,1)/(0,0,0) scale. Use a held key, not a
-                // linear interpolation, or transition frames show ghost
-                // arms/eyes/mouths while both sprites fade through 0..1.
+                // Raw animation data is authoritative even when this model
+                // has no Lcl Scaling curve: do not invent visibility from a
+                // synthetic Assimp scaling channel.
+                if (hasAuthoredKeys && state.SourceVisible)
+                    scale = authoredScale;
+            }
+            else if (channel.ScalingKeys.Count > 0)
+            {
+                scale = SampleVector(channel.ScalingKeys, ticks, state.BaseScale);
                 if (IsVisibilityCurve(channel.ScalingKeys))
                     scale = SampleSteppedVector(channel.ScalingKeys, ticks, state.BaseScale);
 
-                // Some FBX exporters collapse the whole static Canvas and
-                // write only constant zero keys for it. Preserve the prior
-                // recoverable-canvas behavior in that specific case.
                 var ignoredCollapsedCanvas =
                     state.CollapsedAncestor &&
                     IsZeroScale(scale) &&
                     channel.ScalingKeys.All(key =>
                         IsZeroScale(MatrixUtil.ToOpenTk(key.Value)));
-
                 if (ignoredCollapsedCanvas)
-                {
                     scale = state.BaseScale;
-                }
                 else
-                {
-                    // Visibility belongs to the node whose keys are evaluated,
-                    // NOT just to Mesh nodes. The parent chain is checked by
-                    // IsSourceVisible. Only XY determine a flat sprite's
-                    // visibility; Z often encodes layer depth.
                     state.SourceVisible = IsVisibleScale(scale);
-
-                    // Separate logical visibility from the transform used for
-                    // skinning/bind recovery. Zeroing the actual transform
-                    // would make ForceVisible incapable of showing the sprite
-                    // for inspection and could produce singular matrices.
-                    if (!state.SourceVisible)
-                        scale = state.BaseScale;
-                }
             }
+
+            // Even if logically hidden, keep a nonsingular local transform
+            // for skeleton bind recovery and the explicit debug Force mode.
+            if (!state.SourceVisible || state.CollapsedAncestor && IsZeroScale(scale))
+                scale = state.BaseScale;
 
             var rotation = SampleQuaternion(channel.RotationKeys, ticks, state.BaseRotation);
             var translation = SampleVector(channel.PositionKeys, ticks, state.BaseTranslation);
@@ -350,6 +354,16 @@ public sealed class AnimationPlayer
                 Matrix4.CreateScale(scale) *
                 Matrix4.CreateFromQuaternion(rotation) *
                 Matrix4.CreateTranslation(translation);
+        }
+        else if (hasAuthoredKeys && state.SourceVisible && !state.CollapsedAncestor)
+        {
+            // The source has scale keys, but Assimp completely discarded
+            // the channel. Preserve its scale animation without losing
+            // the rest pose's rotation/translation.
+            local =
+                Matrix4.CreateScale(authoredScale) *
+                Matrix4.CreateFromQuaternion(state.BaseRotation) *
+                Matrix4.CreateTranslation(state.BaseTranslation);
         }
 
         state.Local = local;
