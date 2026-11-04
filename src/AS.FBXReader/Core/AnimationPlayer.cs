@@ -177,6 +177,8 @@ public sealed class AnimationPlayer
                 channel!.ScalingKeys.Count.ToString() : "NO_CHANNEL");
             sb.Append(" importedBindScale=").Append(FormatVector(current.BaseScale));
             sb.Append(" repairedMesh=").Append(current.CollapsedMesh);
+            sb.Append(" staticSpriteRecovery=").Append(
+                _session.IsUnanimatedStaticSprite(current.Node.Name, current.CollapsedMesh));
             sb.Append(" repairedParent=").Append(current.CollapsedAncestor);
             if (!current.SourceVisible)
                 sb.Append("  <<< BLOCKS VISIBILITY");
@@ -333,7 +335,13 @@ public sealed class AnimationPlayer
         var local = state.BaseLocal;
         // Only the FBX-authored default determines initial visibility.
         // A collapsed Assimp bind pose must not hide a mesh in every take.
-        state.SourceVisible = state.CollapsedAncestor || (
+        // A collapsed SpriteSkin with NO scale keys in ANY take is not an
+        // animated alternative. It is a static body/head/hair/limb component
+        // whose exporter wrote an invalid zero-scale rest pose. Recover it
+        // without forcing animated eyes/mouths or mutually exclusive layers.
+        var recoveredStaticSprite =
+            _session.IsUnanimatedStaticSprite(state.Node.Name, state.CollapsedMesh);
+        state.SourceVisible = recoveredStaticSprite || state.CollapsedAncestor || (
             _session.TryGetAuthoredVisibility(state.Node.Name, out var authored)
                 ? authored
                 : !state.CollapsedMesh);
