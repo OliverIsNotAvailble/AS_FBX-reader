@@ -26,10 +26,8 @@ public sealed class FbxSession : IDisposable
     // the FBX has real scale tracks for its animated alternatives. Non-skinned
     // overlays and any SpriteSkin with a key in ANY take remain untouched.
     public bool IsUnanimatedStaticSprite(string nodeName, bool collapsedMesh)
-        => collapsedMesh &&
-           nodeName.StartsWith("__spriteskin_", StringComparison.Ordinal) &&
-           _rawScaleVisibility is { AnimationCount: > 0, TrackCount: > 0 } &&
-           !_rawScaleVisibility.HasAnyScaleCurve(nodeName);
+        => _rawScaleVisibility?.IsNeverKeyedCollapsedSpriteSkin(
+            nodeName, collapsedMesh) ?? false;
 
     public bool TrySampleRawScale(int animationIndex, string nodeName,
         double seconds, OpenTK.Mathematics.Vector3 fallback,
