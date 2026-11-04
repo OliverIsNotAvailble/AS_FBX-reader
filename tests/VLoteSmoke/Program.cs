@@ -13,6 +13,31 @@ static void Check(bool result, string description)
         throw new Exception("VLote smoke FAILED: " + description);
     Console.WriteLine("PASS: " + description);
 }
+// The same center-crop geometry must be used for the live OpenGL preview
+// and all offscreen export resolutions. No distortion, no letterbox.
+var imageSquare = BackgroundImageLayout.Cover(1024, 1024, 1024, 1024);
+Check(Math.Abs(imageSquare.MinU) < 0.00001f &&
+      Math.Abs(imageSquare.MaxU - 1f) < 0.00001f &&
+      Math.Abs(imageSquare.MinV) < 0.00001f &&
+      Math.Abs(imageSquare.MaxV - 1f) < 0.00001f,
+      "square background uses the full source image");
+var imageWide = BackgroundImageLayout.Cover(1920, 1080, 720, 1280);
+Check(imageWide.MinU > 0.3f && imageWide.MaxU < 0.7f &&
+      imageWide.MinV == 0f && imageWide.MaxV == 1f,
+      "portrait output crops widescreen background horizontally");
+var imageTall = BackgroundImageLayout.Cover(720, 1280, 1920, 1080);
+Check(imageTall.MinV > 0.3f && imageTall.MaxV < 0.7f &&
+      imageTall.MinU == 0f && imageTall.MaxU == 1f,
+      "landscape output crops portrait background vertically");
+var imageSameAspect = BackgroundImageLayout.Cover(3840, 2160, 1280, 720);
+Check(Math.Abs(imageSameAspect.MinU) < 0.00001f &&
+      Math.Abs(imageSameAspect.MaxV - 1f) < 0.00001f,
+      "matching background and export aspect ratios use the full image");
+var transparentOpts = new AS.FBXReader.Export.ExportSettings();
+Check(transparentOpts.TransparentBackground &&
+      transparentOpts.BackgroundImagePath is null,
+      "legacy transparent output defaults preserved");
+
 // Actual FBX sample (DesertFox_Dead_Character) encodes mutually exclusive
 // eyes/mouth/limbs as 0/1 XY scale keys, while Z is reserved for draw order.
 // Regression: never interpolate a half-visible ghost between animation keys.
