@@ -1,3 +1,4 @@
+using AS.FBXReader.Batch;
 using AS.FBXReader.Core;
 using AS.FBXReader.Models;
 using AS.FBXReader.Rendering;
@@ -17,14 +18,18 @@ public sealed class ExportDialog : Form
     private readonly NumericUpDown _height = new();
     private readonly NumericUpDown _fps = new();
     private readonly NumericUpDown _quality = new();
-    private readonly CheckBox _transparent = new();
+    private readonly ComboBox _backgroundMode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly CheckBox _pma = new();
     private readonly Button _backgroundButton = new();
+    private readonly Button _backgroundImageButton = new();
+    private readonly Button _backgroundReloadButton = new();
+    private readonly Label _backgroundImageLabel = new() { AutoSize = true };
     private readonly RadioButton _currentAnimation = new();
     private readonly RadioButton _allAnimations = new();
     private readonly RadioButton _selectedAnimations = new();
     private readonly CheckedListBox _selectedTakes = new();
     private readonly TextBox _output = new();
+    private readonly Label _outputHint = new() { AutoSize = true };
     private readonly NumericUpDown _zoom = new();
     private readonly NumericUpDown _offsetX = new();
     private readonly NumericUpDown _offsetY = new();
@@ -40,6 +45,8 @@ public sealed class ExportDialog : Form
     private CancellationTokenSource? _exportCancellation;
 
     private Color _backgroundColor = Color.Black;
+    private string? _backgroundImagePath;
+    private readonly Action<string>? _fixedOutputChanged;
     private readonly int _originalAnimationIndex;
     private readonly double _originalTime;
     private readonly bool _originalPlaying;
@@ -60,8 +67,11 @@ public sealed class ExportDialog : Form
         bool premultiplyAlpha,
         int initialWidth = 2048,
         int initialHeight = 2048,
-        FramingState? initialFraming = null)
+        FramingState? initialFraming = null,
+        string fixedOutputRoot = "",
+        Action<string>? fixedOutputChanged = null)
     {
+        _fixedOutputChanged = fixedOutputChanged;
         _session = session;
         _player = player;
         _initialFraming = initialFraming?.Clone();
@@ -81,6 +91,8 @@ public sealed class ExportDialog : Form
         Font = new Font("Segoe UI", 10.5F);
 
         BuildUi(premultiplyAlpha);
+        _output.Text = fixedOutputRoot; // session-only; NEVER generated from source FBX
+        UpdateDefaultOutput();
         // Mirror the desired output format from the main viewport instead
         // of always opening at the exporter's 2048x2048 preset.
         _width.Value = Math.Clamp(initialWidth, (int)_width.Minimum, (int)_width.Maximum);
@@ -265,16 +277,24 @@ public sealed class ExportDialog : Form
         ConfigureNumber(_quality, 1, 100, 90);
         AddRow(settings, "Quality", _quality);
 
-        _transparent.Text = "Transparent background";
-        _transparent.Checked = true;
-        _transparent.AutoSize = true;
-        AddRow(settings, "Background", _transparent);
+        _backgroundMode.Items.AddRange(["Transparent (WebP/MOV)", "Solid color", "Background image"]);
+        _backgroundMode.SelectedIndex = 0;
+        AddRow(settings, "Background", _backgroundMode);
 
-        _backgroundButton.Text = "Solid color...";
+        _backgroundButton.Text = "Choose solid color...";
         _backgroundButton.AutoSize = true;
         _backgroundButton.BackColor = _backgroundColor;
         _backgroundButton.ForeColor = Color.White;
         AddRow(settings, string.Empty, _backgroundButton);
+
+        _backgroundImageButton.Text = "Choose background image...";
+        _backgroundImageButton.AutoSize = true;
+        AddRow(settings, string.Empty, _backgroundImageButton);
+        _backgroundReloadButton.Text = "Reload image";
+        _backgroundReloadButton.AutoSize = true;
+        AddRow(settings, string.Empty, _backgroundReloadButton);
+        _backgroundImageLabel.Text = "No image selected";
+        AddRow(settings, string.Empty, _backgroundImageLabel);
 
         _pma.Text = "Premultiply Alpha (PMA)";
         _pma.Checked = premultiplyAlpha;
@@ -319,7 +339,8 @@ public sealed class ExportDialog : Form
         outputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         outputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         _output.Dock = DockStyle.Fill;
-        var browse = ActionButton("Browse...", (_, _) => BrowseOutput());
+        _output.PlaceholderText = "Choose a fixed export folder (required)";
+        var browse = ActionButton("Choose folder...", (_, _) => BrowseOutput());
         browse.Dock = DockStyle.Fill;
         outputPanel.Controls.Add(_output, 0, 0);
         outputPanel.Controls.Add(browse, 1, 0);
@@ -327,6 +348,8 @@ public sealed class ExportDialog : Form
         settings.SetColumnSpan(outputPanel, 2);
         settings.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         settings.RowCount++;
+        _outputHint.Text = "Fixed output: select a folder. Each FBX gets its own subfolder.";
+        AddRow(settings, string.Empty, _outputHint);
 
         var footer = new TableLayoutPanel
         {
@@ -486,10 +509,14 @@ public sealed class ExportDialog : Form
             ApplyFraming();
         };
 
-        _transparent.CheckedChanged += (_, _) =>
+        _backgroundMode.SelectedIndexChanged += (_, _) =>
         {
-            ApplyBackground();
-            _backgroundButton.Enabled = !_transparent.Checked;
+            if (_format.SelectedIndex == 1 && _backgroundMode.SelectedIndex == 0)
+            {
+                _backgroundMode.SelectedIndex = 1; // H.264 does not support alpha
+                return;
+            }
+            UpdateFormatUi();
         };
 
         _backgroundButton.Click += (_, _) =>
@@ -504,6 +531,7 @@ public sealed class ExportDialog : Form
                 return;
 
             _backgroundColor = colorDialog.Color;
+            _backgroundMode.SelectedIndex = 1;
             _backgroundButton.BackColor = _backgroundColor;
             _backgroundButton.ForeColor =
                 _backgroundColor.GetBrightness() < 0.45f
@@ -511,6 +539,45 @@ public sealed class ExportDialog : Form
                     : Color.Black;
 
             ApplyBackground();
+        };
+
+        _backgroundImageButton.Click += (_, _) =>
+        {
+            using var picker = new OpenFileDialog
+            {
+                Title = "Choose background image",
+                Filter = "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif",
+                CheckFileExists = true,
+                FileName = _backgroundImagePath ?? ""
+            };
+            if (picker.ShowDialog(this) != DialogResult.OK)
+                return;
+            try
+            {
+                using var bitmap = new Bitmap(picker.FileName);
+                if (bitmap.Width <= 0 || bitmap.Height <= 0)
+                    throw new InvalidDataException("Invalid image dimensions.");
+                _backgroundImagePath = Path.GetFullPath(picker.FileName);
+                _backgroundMode.SelectedIndex = 2;
+                ApplyBackground();
+            }
+            catch (Exception ex) when (ex is IOException or ArgumentException or
+                                       OutOfMemoryException or InvalidDataException)
+            {
+                MessageBox.Show(this, ex.Message, "Background image",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        };
+        _backgroundReloadButton.Click += (_, _) =>
+        {
+            if (!string.IsNullOrWhiteSpace(_backgroundImagePath))
+                _preview.ReloadBackgroundImage();
+            ApplyBackground();
+        };
+        _output.TextChanged += (_, _) =>
+        {
+            _fixedOutputChanged?.Invoke(_output.Text);
+            UpdateDefaultOutput();
         };
 
         _pma.CheckedChanged += (_, _) =>
@@ -587,13 +654,32 @@ public sealed class ExportDialog : Form
 
     private void ApplyBackground()
     {
-        _preview.SetBackground(
-            _transparent.Checked,
-            _backgroundColor);
+        var mode = _backgroundMode.SelectedIndex;
+        _backgroundButton.Enabled = mode == 1;
+        _backgroundImageButton.Enabled = mode == 2;
+        _backgroundReloadButton.Enabled = mode == 2 &&
+            !string.IsNullOrWhiteSpace(_backgroundImagePath);
+        _backgroundImageLabel.Text = string.IsNullOrWhiteSpace(_backgroundImagePath)
+            ? "No image selected" : Path.GetFileName(_backgroundImagePath);
 
-        _previewHost.BackColor = _transparent.Checked
-            ? Color.FromArgb(38, 38, 38)
-            : _backgroundColor;
+        _preview.SetBackground(mode == 0, _backgroundColor);
+        if (mode == 2 && !string.IsNullOrWhiteSpace(_backgroundImagePath) &&
+            File.Exists(_backgroundImagePath))
+        {
+            try { _preview.SetBackgroundImage(_backgroundImagePath); }
+            catch (Exception ex) when (ex is IOException or ArgumentException or OutOfMemoryException)
+            {
+                _backgroundImageLabel.Text = "Image load error: " + ex.Message;
+                _preview.SetBackgroundImage(null);
+            }
+        }
+        else
+        {
+            _preview.SetBackgroundImage(null);
+        }
+
+        _previewHost.BackColor = mode == 1
+            ? _backgroundColor : Color.FromArgb(38, 38, 38);
     }
 
     private void LayoutPreview()
@@ -676,13 +762,10 @@ public sealed class ExportDialog : Form
         var format = CurrentFormat();
         var alphaSupported = format != ExportFormat.Mp4;
 
-        _transparent.Enabled = alphaSupported;
-
-        if (!alphaSupported)
-            _transparent.Checked = false;
+        if (!alphaSupported && _backgroundMode.SelectedIndex == 0)
+            _backgroundMode.SelectedIndex = 1;
 
         _quality.Enabled = format != ExportFormat.Mov;
-        _backgroundButton.Enabled = !_transparent.Checked;
         ApplyBackground();
     }
 
@@ -696,63 +779,33 @@ public sealed class ExportDialog : Form
 
     private void UpdateDefaultOutput()
     {
-        if (_session.Scene is null || _animation.SelectedItem is not AnimationTake take)
-            return;
-
-        var directory = Path.Combine(
-            Path.GetDirectoryName(_session.FilePath)!,
-            "AS_FBX_exports");
-
-        if (BatchExport)
+        // The text box is the fixed BASE, not a generated file/directory.
+        // Updating takes or formats must not silently replace the user's path.
+        try
         {
-            _output.Text = directory;
-            return;
+            _outputHint.Text = string.IsNullOrWhiteSpace(_output.Text)
+                ? "Fixed output required. Each FBX exports to its own named folder."
+                : "Destination: " + Path.Combine(_output.Text.Trim(),
+                    FixedOutputFolder.ModelFolderName(_session.FilePath));
         }
-
-        var settings = ReadSettings();
-        _output.Text = Path.Combine(
-            directory,
-            SanitizeFileName(take.Name) + settings.Extension);
+        catch (ArgumentException)
+        {
+            _outputHint.Text = "Open an FBX before exporting.";
+        }
     }
 
     private void BrowseOutput()
     {
-        if (BatchExport)
+        using var dialog = new FolderBrowserDialog
         {
-            using var dialog = new FolderBrowserDialog
-            {
-                Description = "Select output folder for the chosen animations",
-                UseDescriptionForTitle = true,
-                SelectedPath = Directory.Exists(_output.Text)
-                    ? _output.Text
-                    : Path.GetDirectoryName(_session.FilePath)
-            };
-
-            if (dialog.ShowDialog(this) == DialogResult.OK)
-                _output.Text = dialog.SelectedPath;
-
-            return;
-        }
-
-        var settings = ReadSettings();
-
-        using var save = new SaveFileDialog
-        {
-            Filter = settings.Format switch
-            {
-                ExportFormat.WebP => "Animated WebP (*.webp)|*.webp",
-                ExportFormat.Mov => "QuickTime MOV (*.mov)|*.mov",
-                _ => "MP4 video (*.mp4)|*.mp4"
-            },
-            DefaultExt = settings.Extension.TrimStart('.'),
-            AddExtension = true,
-            FileName = _animation.SelectedItem is AnimationTake take
-                ? SanitizeFileName(take.Name) + settings.Extension
-                : "animation" + settings.Extension
+            Description = "Select the FIXED output folder for all FBX models",
+            UseDescriptionForTitle = true,
+            SelectedPath = Directory.Exists(_output.Text)
+                ? _output.Text
+                : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
         };
-
-        if (save.ShowDialog(this) == DialogResult.OK)
-            _output.Text = save.FileName;
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+            _output.Text = dialog.SelectedPath;
     }
 
     private ExportSettings ReadSettings()
@@ -763,8 +816,10 @@ public sealed class ExportDialog : Form
             Height = (int)_height.Value,
             Fps = (int)_fps.Value,
             Quality = (int)_quality.Value,
-            TransparentBackground = _transparent.Checked,
+            TransparentBackground = _backgroundMode.SelectedIndex == 0,
             BackgroundColor = _backgroundColor,
+            BackgroundImagePath = _backgroundMode.SelectedIndex == 2
+                ? _backgroundImagePath : null,
             ExportAllAnimations = BatchExport,
             OutputPath = _output.Text.Trim()
         };
@@ -783,9 +838,25 @@ public sealed class ExportDialog : Form
 
         var settings = ReadSettings();
 
-        if (string.IsNullOrWhiteSpace(settings.OutputPath))
+        try
         {
-            MessageBox.Show(this, "Select an output file/folder first.");
+            settings.OutputPath = FixedOutputFolder.ForModel(
+                _output.Text, _session.FilePath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or
+                                   UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, ex.Message,
+                "Pasta de saída fixa não definida",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        if (settings.BackgroundImagePath is not null &&
+            !File.Exists(settings.BackgroundImagePath))
+        {
+            MessageBox.Show(this, "Choose an existing background image first.",
+                "Background image", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
@@ -830,10 +901,9 @@ public sealed class ExportDialog : Form
             // Let WinForms paint the locked settings and Cancel button first.
             await Task.Yield();
             cancellation.Token.ThrowIfCancellationRequested();
-            if (settings.ExportAllAnimations)
-                Directory.CreateDirectory(settings.OutputPath);
-            else
-                Directory.CreateDirectory(Path.GetDirectoryName(settings.OutputPath)!);
+            // Live2D-compatible: always keep motion files within the FBX
+            // filename subfolder under this session's fixed base output.
+            Directory.CreateDirectory(settings.OutputPath);
 
             var exporter = new AnimationExporter();
 
@@ -882,13 +952,8 @@ public sealed class ExportDialog : Form
                     rendering = false;
                     cancellation.Token.ThrowIfCancellationRequested();
 
-                    var outputPath = settings.ExportAllAnimations
-                        ? Path.Combine(
-                            settings.OutputPath,
-                            SanitizeFileName(take.Name) + settings.Extension)
-                        : EnsureExtension(
-                            settings.OutputPath,
-                            settings.Extension);
+                    var outputPath = Path.Combine(settings.OutputPath,
+                        SanitizeFileName(take.Name) + settings.Extension);
 
                     _status.Text =
                         $"Encoding {Path.GetFileName(outputPath)}...";
@@ -927,11 +992,8 @@ public sealed class ExportDialog : Form
                 ? $"Done: {takes.Count} animations exported."
                 : "Done.";
 
-            MessageBox.Show(
-                this,
-                settings.ExportAllAnimations
-                    ? $"Exported {takes.Count} animations to:\r\n{settings.OutputPath}"
-                    : $"Exported:\r\n{EnsureExtension(settings.OutputPath, settings.Extension)}",
+            MessageBox.Show(this,
+                $"Exported {takes.Count} animation(s) to:\r\n{settings.OutputPath}",
                 "Export complete");
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
