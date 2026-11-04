@@ -296,7 +296,8 @@ public sealed class AnimationPlayer
         var authoredScale = state.BaseScale;
         var hasAuthoredKeys = rawAvailable &&
             _session.TrySampleRawScale(AnimationIndex, state.Node.Name,
-                TimeSeconds, state.BaseScale, out authoredScale);
+                TimeSeconds, state.BaseScale, out authoredScale,
+                _session.Animations[AnimationIndex].Name);
 
         if (hasAuthoredKeys && !state.CollapsedAncestor)
         {
