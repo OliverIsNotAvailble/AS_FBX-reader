@@ -683,7 +683,9 @@ public sealed partial class MainForm
         }
         try
         {
-            LoadFbxFile(_batchEntry.FilePath);
+            // Avoid native Assimp postprocessing for FBX queue imports.
+            // WinDbg confirmed double-free in aiReleaseImport on failure.
+            LoadFbxFile(_batchEntry.FilePath, safeBatchImport: true);
             _viewer.ResetFraming();
             SyncBatchFraming();
             _player.Playing = false; // no moving model while choosing export settings
