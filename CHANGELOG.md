@@ -4,6 +4,16 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## VLote 1.1.2 — 2026-11-04 — Mitigate native AssimpNetter double-free during batch import
+
+- Analyzed a real user WinDbg full crash dump. Confirmed `0xC0000374` / `HEAP_CORRUPTION_ACTIONABLE_BlockNotBusy_DOUBLE_FREE` during `FbxSession.Open → AssimpContext.ImportFile → ApplyPostProcessing → aiReleaseImport`. This occurred on the batch folder scan before model preview, not in OpenGL or animation playback.
+- Confirmed against AssimpNetter 6.0.5 source (`Saalvage/AssimpNetter`, `AssimpNet/AssimpContext.cs`): `ImportFile` first imports with `PostProcessSteps.None`, then explicitly runs `ApplyPostProcessing`. If native postprocessing rejects/invalidates a scene, the wrapper may still invoke `ReleaseImport` on a stale scene pointer in `finally`. Validation is strict and can reject imperfect FBX models.
+- VLote's automatic queue now uses `FbxSession.Open(..., safeBatchImport: true)` and passes **no native postprocessing flags** to AssimpNetter. This avoids the specific failure path in the crash trace and retains FBX loading, bone/animation data, and the custom source visibility parser. Manual `Open FBX` keeps its previous native flags and rendering behavior unchanged.
+- Added `Rendering/MeshTriangleIndices.cs` and replaced GL draw/pick indices with safe managed face triangulation. This preserves already-triangular polygons, converts larger polygons with a triangle fan, and skips invalid/degenerate face references without invoking native triangulation. A concave n-gon might need a more advanced triangulator; AssetStudio sprite meshes usually contain triangles.
+- Added smoke tests for triangles, quads, pentagons and malformed faces; preview status now notes safe import. No changes to the recovered static SpriteSkin switches, export settings, queue sorting, textures or profiles.
+- Files: `FbxSession.cs`, `MainForm.cs`, `VLoteMainForm.cs`, `SceneRenderer.cs`, new `MeshTriangleIndices.cs`, `tests/VLoteSmoke/Program.cs`, csproj, workflow artifact name and this changelog.
+- The actual user-triggering FBX and repeated batch scanning still require a Windows run. This addresses the dump's *postprocessing* failure path; unrelated crashes inside base FBX import would require process isolation.
+
 ## VLote 1.1.1 — 2026-11-04 — Fix intermittent IndexOutOfRange on consecutive FBX loads
 
 - Fixed a crash when switching from a model with many animations to another model with fewer animations. The previous FBX's selected animation index survived `AnimationPlayer.Rebuild()`; `SelectAnimation` could keep that invalid index, and `EvaluateNode` then accessed `_session.Animations[AnimationIndex]`, producing `System.ArgumentOutOfRangeException` before the new model's animation UI could select take 0.
