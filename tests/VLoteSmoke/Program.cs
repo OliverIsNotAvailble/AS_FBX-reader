@@ -13,6 +13,27 @@ static void Check(bool result, string description)
         throw new Exception("VLote smoke FAILED: " + description);
     Console.WriteLine("PASS: " + description);
 }
+// Crash regression: the VLote queue imports with no native postprocessing.
+// AssimpNetter 6.0.5 can double-free a scene when its validator fails.
+// Renderer/picker triangulate the original FBX polygons in managed memory.
+var singleTri = MeshTriangleIndices.FromFaces(
+    new IReadOnlyList<int>[] { new[] { 0, 1, 2 } }, 3);
+Check(singleTri.SequenceEqual(new uint[] { 0, 1, 2 }),
+    "safe FBX renderer preserves original triangles");
+var quadTri = MeshTriangleIndices.FromFaces(
+    new IReadOnlyList<int>[] { new[] { 0, 1, 2, 3 } }, 4);
+Check(quadTri.SequenceEqual(new uint[] { 0, 1, 2, 0, 2, 3 }),
+    "safe FBX renderer triangulates a quad without Assimp native postprocessing");
+var mixedTri = MeshTriangleIndices.FromFaces(
+    new IReadOnlyList<int>[] {
+        new[] { 0, 1, 2, 3, 4 },
+        new[] { 7, 1, 2 },
+        new[] { 0, 0, 1 },
+        new[] { 1, 2 },
+        Array.Empty<int>() }, 5);
+Check(mixedTri.SequenceEqual(new uint[] { 0, 1, 2, 0, 2, 3, 0, 3, 4 }),
+    "safe FBX renderer rejects invalid, degenerate and non-polygon faces");
+
 // Regression: opening FBX B after selecting take 8 in FBX A (12 takes)
  // must never try to read take 8 from B when B has only 3 takes.
 Check(AnimationPlayer.NormalizeAnimationIndex(8, 3, 3) == -1,
