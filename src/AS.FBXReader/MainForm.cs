@@ -785,10 +785,10 @@ public sealed partial class MainForm : Form
 
     // Shared by manual Open FBX and VLote's automatic next-file queue.
     // Loading never invokes the folder picker or silently changes the root.
-    private void LoadFbxFile(string path)
+    private void LoadFbxFile(string path, bool safeBatchImport = false)
     {
         _player.Playing = false;
-        _session.Open(path);
+        _session.Open(path, safeBatchImport);
         _excludedPartIds.Clear();
         _player.Rebuild();
         _viewer.Attach(_session, _player);
@@ -799,6 +799,9 @@ public sealed partial class MainForm : Form
         if (_animations.Items.Count > 0)
             _animations.SelectedIndex = 0;
 
+        var safeNote = _session.SafeBatchImport
+            ? " | safe import: native postprocess bypassed"
+            : string.Empty;
         var duplicateNote = _session.DuplicateModelNamesFixed > 0
             ? $" | {_session.DuplicateModelNamesFixed} duplicate FBX Model names isolated"
             : string.Empty;
@@ -822,7 +825,7 @@ public sealed partial class MainForm : Form
             : string.Empty;
 
         _status.Text = $"{Path.GetFileName(path)} | {_session.Parts.Count} parts | " +
-            $"{_session.Animations.Count} animations{rawScaleNote}{staticRecoveryNote}{duplicateNote}{scaleNote}{ancestorNote}{sourceNote}{bindNote} | " +
+            $"{_session.Animations.Count} animations{safeNote}{rawScaleNote}{staticRecoveryNote}{duplicateNote}{scaleNote}{ancestorNote}{sourceNote}{bindNote} | " +
             "VLote: preview principal, _EXT, _OK / _Null";
     }
 
