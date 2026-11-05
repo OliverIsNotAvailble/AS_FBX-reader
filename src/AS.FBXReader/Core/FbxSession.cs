@@ -13,6 +13,11 @@ public sealed class FbxSession : IDisposable
     public string FilePath { get; private set; } = string.Empty;
     public Scene? Scene { get; private set; }
     public int DuplicateModelNamesFixed { get; private set; }
+    /// <summary>
+    /// Batch-only safety path: no native Assimp post-processing, because
+    /// AssimpNetter 6.0.5 can double-free scenes after a failed validator.
+    /// </summary>
+    public bool SafeBatchImport { get; private set; }
     private readonly Dictionary<string, bool> _authoredVisibility = new(StringComparer.Ordinal);
     private FbxRawScaleVisibility? _rawScaleVisibility;
     public int RawScaleAnimationCount => _rawScaleVisibility?.AnimationCount ?? 0;
@@ -118,9 +123,10 @@ public sealed class FbxSession : IDisposable
     public List<AnimationTake> Animations { get; } = new();
     public IReadOnlyDictionary<string, Node> NodesByName => _nodesByName;
 
-    public void Open(string path)
+    public void Open(string path, bool safeBatchImport = false)
     {
         CloseScene();
+        SafeBatchImport = safeBatchImport;
 
         FilePath = Path.GetFullPath(path);
         EnsureAssimpLoadedFromAnsiSafePath();
@@ -170,11 +176,17 @@ public sealed class FbxSession : IDisposable
                 _rawScaleVisibility = null;
             }
 
-            Scene = _context.ImportFile(
-                stagedFbx,
-                PostProcessSteps.Triangulate |
-                PostProcessSteps.SortByPrimitiveType |
-                PostProcessSteps.ValidateDataStructure);
+            // Crash dump 2026-11-04: native aiApplyPostProcessing can
+            // release the scene on error; AssimpNetter's finally then
+            // aiReleaseImport's the stale pointer => DOUBLE_FREE c0000374.
+            // Keep normal imports unchanged. VLote queue avoids the native
+            // post-processing step; managed face triangulation replaces it.
+            Scene = _context.ImportFile(stagedFbx,
+                safeBatchImport
+                    ? PostProcessSteps.None
+                    : PostProcessSteps.Triangulate |
+                      PostProcessSteps.SortByPrimitiveType |
+                      PostProcessSteps.ValidateDataStructure);
         }
         finally
         {
@@ -435,6 +447,7 @@ public sealed class FbxSession : IDisposable
         Scene = null;
         FilePath = string.Empty;
         DuplicateModelNamesFixed = 0;
+        SafeBatchImport = false;
         _authoredVisibility.Clear();
         _rawScaleVisibility = null;
         Parts.Clear();
