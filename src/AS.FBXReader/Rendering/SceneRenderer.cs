@@ -179,7 +179,7 @@ public sealed class SceneRenderer : IDisposable
         // the first triangle under the cursor.
         foreach (var item in prepared)
         {
-            var indices = item.Mesh.GetUnsignedIndices().ToArray();
+            var indices = MeshTriangleIndices.FromMesh(item.Mesh);
             for (var i = 0; i + 2 < indices.Length; i += 3)
             {
                 var ia = (int)indices[i];
@@ -556,7 +556,7 @@ public sealed class SceneRenderer : IDisposable
             }
         }
 
-        var indices = mesh.GetUnsignedIndices().Select(x => (uint)x).ToArray();
+        var indices = MeshTriangleIndices.FromMesh(mesh);
         if (indices.Length == 0)
             return;
 
