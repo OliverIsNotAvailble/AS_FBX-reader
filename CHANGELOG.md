@@ -4,6 +4,13 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## VLote — ajuste preparado para próxima utilização (2026-11-06; sem alterar versão)
+
+- Removida a numeração automática `001_`, `002_`, `003_` dos arquivos exportados no modo VLote. Os vídeos agora conservam o nome original da animação (`Idle.webp`, `Attack.mp4` etc.), sem prefixos por posição.
+- Se duas animações gerarem o mesmo nome de arquivo, aplica somente sufixos de desempate (`Idle (2).webp`, `Idle (3).webp`), sem sobrescrever nenhuma delas; respeita o formato de exportação escolhido.
+- Alteração apenas em `src/AS.FBXReader/VLoteMainForm.cs` e neste changelog. Não muda o projeto, a organização das saídas, a versão, o README ou outras branches.
+- Alteração registrada para uso no próximo jogo; compilação, smoke tests e validação em exportações reais **não executados**, conforme solicitado.
+
 ## VLote 1.1.2 — 2026-11-04 — Mitigate native AssimpNetter double-free during batch import
 
 - Analyzed a real user WinDbg full crash dump. Confirmed `0xC0000374` / `HEAP_CORRUPTION_ACTIONABLE_BlockNotBusy_DOUBLE_FREE` during `FbxSession.Open → AssimpContext.ImportFile → ApplyPostProcessing → aiReleaseImport`. This occurred on the batch folder scan before model preview, not in OpenGL or animation playback.
