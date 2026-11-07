@@ -874,6 +874,9 @@ public sealed partial class MainForm
             // OpenGL context and keeps the current camera, mesh toggles/PMA.
             _viewer.SetBackground(opts.TransparentBackground, opts.BackgroundColor);
             _viewer.SetBackgroundImage(opts.BackgroundImagePath);
+            // Preserve the original take names in exported videos. A suffix is
+            // used only when two takes would otherwise have the same filename.
+            var usedBatchFilenames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (var i = 0; i < takes.Count; i++)
             {
                 token.ThrowIfCancellationRequested();
@@ -898,8 +901,11 @@ public sealed partial class MainForm
                         opts.Fps, progress, token);
                     token.ThrowIfCancellationRequested();
                     var filename = SafeBatchName(current.Name);
-                    var target = Path.Combine(exportStage,
-                        $"{i + 1:000}_{filename}{opts.Extension}");
+                    var outputFile = $"{filename}{opts.Extension}";
+                    var duplicate = 2;
+                    while (!usedBatchFilenames.Add(outputFile))
+                        outputFile = $"{filename} ({duplicate++}){opts.Extension}";
+                    var target = Path.Combine(exportStage, outputFile);
                     BatchStatus($"Codificando {Path.GetFileName(target)}...");
                     await exporter.EncodeWithFfmpegAsync(
                         frameTemp, target, opts, token);
