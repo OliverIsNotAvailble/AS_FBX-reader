@@ -30,7 +30,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $output = Join-Path $env:RUNNER_TEMP "AS_FBX-reader_win-x64"
-          dotnet publish .\src\AS.FBXReader\AS.FBXReader.csproj -c Release -r win-x64 --self-contained true --no-restore -o $output
+          dotnet publish .\src\AS.FBXReader\AS.FBXReader.csproj -c Release -r win-x64 --self-contained true -o $output
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish falhou" }
 
           $exe = Join-Path $output "AS_FBX-reader.exe"
@@ -39,8 +39,10 @@ jobs:
           # FbxSession loads Assimp from this exact relative runtime path.
           $native = Join-Path $output "runtimes\win-x64\native\assimp.dll"
           if (!(Test-Path $native)) {
-            $built = Join-Path $env:GITHUB_WORKSPACE "src\AS.FBXReader\bin\Release\net9.0-windows\win-x64\runtimes\win-x64\native\assimp.dll"
-            if (!(Test-Path $built)) { throw "assimp.dll ausente no build" }
+            $built = Get-ChildItem (Join-Path $env:GITHUB_WORKSPACE "src\AS.FBXReader\bin\Release") -Recurse -Filter "assimp.dll" |
+              Where-Object { $_.FullName -match 'runtimes[\\/]win-x64[\\/]native' } |
+              Select-Object -First 1 -ExpandProperty FullName
+            if (!$built -or !(Test-Path $built)) { throw "assimp.dll ausente no build" }
             New-Item -ItemType Directory -Force -Path (Split-Path $native) | Out-Null
             Copy-Item $built $native
           }
