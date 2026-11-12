@@ -79,6 +79,47 @@ Check(!BindOffsetRecovery.NeedsRepair(slightlyOff, meshBind, boneBind),
 Check(BindOffsetRecovery.NeedsRepair(new OpenTK.Mathematics.Matrix4(),
     meshBind, boneBind), "singular offset is identified");
 
+// New per-mesh Edit mesh controls must be non-destructive and preserve
+// the original XY silhouette while an animated rig is tilted out of plane.
+var rawLeg = new[] {
+    new OpenTK.Mathematics.Vector3(0f, 0f, 0f),
+    new OpenTK.Mathematics.Vector3(4f, 0f, 0f),
+    new OpenTK.Mathematics.Vector3(0f, 2f, 0f),
+};
+var sourceLeg = rawLeg.ToArray();
+var badlyTilted = OpenTK.Mathematics.Matrix4.CreateRotationX(
+    -MathF.PI / 2f) * OpenTK.Mathematics.Matrix4.CreateTranslation(5f, 3f, 0f);
+var straightLeg = MeshPoseCorrection.Undeform(rawLeg, badlyTilted,
+    new OpenTK.Mathematics.Vector3(2f, -1f, 0f));
+Check(MathF.Abs((straightLeg[1] - straightLeg[0]).Length - 4f) < 0.0001f &&
+      MathF.Abs((straightLeg[2] - straightLeg[0]).Length - 2f) < 0.0001f &&
+      MathF.Abs(straightLeg[2].Y - straightLeg[0].Y - 2f) < 0.0001f,
+    "Reset deform keeps source-image shape despite -90deg bone tilt");
+Check(rawLeg.SequenceEqual(sourceLeg),
+    "Reset deform never changes source vertices");
+var rotatedLeg = straightLeg.ToArray();
+MeshPoseCorrection.RotateAroundCenter(rotatedLeg, 90f);
+Check(MathF.Abs((rotatedLeg[1] - rotatedLeg[0]).Length -
+                (straightLeg[1] - straightLeg[0]).Length) < 0.0001f &&
+      MathF.Abs(rotatedLeg[1].X - rotatedLeg[0].X) < 0.0001f,
+    "90deg per-mesh rotation preserves silhouette edge lengths");
+MeshPoseCorrection.RotateAroundCenter(rotatedLeg, -90f);
+Check((rotatedLeg[1] - straightLeg[1]).Length < 0.0001f &&
+      (rotatedLeg[2] - straightLeg[2]).Length < 0.0001f,
+    "rotating back restores the exact previous placement");
+var otherPart = new ScenePart {
+    Id = "other", Name = "other", NodeName = "node", MeshIndex = 0
+};
+Check(!otherPart.ResetDeform && otherPart.MeshRotationDegrees == 0f,
+    "per-part corrections default to off and do not affect siblings");
+var adjusted = new MeshAdjustmentProfile {
+    ResetDeform = true, MeshRotationDegrees = -15f
+};
+var encoded = System.Text.Json.JsonSerializer.Serialize(adjusted);
+var decoded = System.Text.Json.JsonSerializer.Deserialize<MeshAdjustmentProfile>(encoded)!;
+Check(decoded.ResetDeform && decoded.MeshRotationDegrees == -15f,
+    "mesh reset and rotation persist as independent profile settings");
+
 // The same center-crop geometry must be used for the live OpenGL preview
 // and all offscreen export resolutions. No distortion, no letterbox.
 var imageSquare = BackgroundImageLayout.Cover(1024, 1024, 1024, 1024);

@@ -13,6 +13,8 @@ public sealed class MeshDeformForm : Form
 {
     private readonly ScenePart _part;
     private readonly Dictionary<int, VertexOffset> _initial;
+    private readonly bool _initialResetDeform;
+    private readonly float _initialRotationDegrees;
     private readonly Stack<Dictionary<int, VertexOffset>> _undo = new();
     private readonly MeshCanvas _canvas;
     private readonly Label _hint;
@@ -22,6 +24,8 @@ public sealed class MeshDeformForm : Form
     {
         _part = part;
         _initial = Snapshot();
+        _initialResetDeform = part.ResetDeform;
+        _initialRotationDegrees = part.MeshRotationDegrees;
         Text = $"Edit mesh shape — {part.DisplayName}";
         StartPosition = FormStartPosition.CenterParent;
         WindowState = FormWindowState.Maximized;
@@ -113,6 +117,53 @@ public sealed class MeshDeformForm : Form
         };
         toolbar.Controls.Add(reset);
 
+        // One-mesh corrections. Neither toggle rewrites FBX geometry or
+        // alters other meshes; renderer and exporter share these same flags.
+        var resetDeform = new CheckBox
+        {
+            Text = "Reset deform (forma original)",
+            Checked = part.ResetDeform,
+            AutoSize = true,
+            Padding = new Padding(10, 5, 5, 0)
+        };
+        resetDeform.CheckedChanged += (_, _) =>
+        {
+            part.ResetDeform = resetDeform.Checked;
+            _hint.Text = resetDeform.Checked
+                ? "Reset deform ON: formato original, acompanha posição sem torção. Salve o perfil."
+                : "Reset deform OFF: deformação dos ossos restaurada. Salve o perfil.";
+            _canvas.Invalidate();
+            previewChanged();
+        };
+        toolbar.Controls.Add(resetDeform);
+        toolbar.Controls.Add(new Label
+        {
+            Text = "Rotação da mesh (graus):",
+            AutoSize = true,
+            Padding = new Padding(10, 5, 0, 0)
+        });
+        var rotation = new NumericUpDown
+        {
+            Minimum = -360,
+            Maximum = 360,
+            DecimalPlaces = 1,
+            Increment = 1,
+            Width = 94,
+            Value = (decimal)Math.Clamp(
+                float.IsFinite(part.MeshRotationDegrees)
+                    ? part.MeshRotationDegrees : 0f, -360f, 360f)
+        };
+        rotation.ValueChanged += (_, _) =>
+        {
+            part.MeshRotationDegrees = (float)rotation.Value;
+            _canvas.FitView();
+            previewChanged();
+        };
+        toolbar.Controls.Add(rotation);
+        var resetRotation = new Button { Text = "Rotação 0°", AutoSize = true };
+        resetRotation.Click += (_, _) => rotation.Value = 0;
+        toolbar.Controls.Add(resetRotation);
+
         var bottom = new TableLayoutPanel
         {
             Dock = DockStyle.Bottom,
@@ -152,7 +203,11 @@ public sealed class MeshDeformForm : Form
         FormClosing += (_, _) =>
         {
             if (DialogResult != DialogResult.OK)
+            {
+                _part.ResetDeform = _initialResetDeform;
+                _part.MeshRotationDegrees = _initialRotationDegrees;
                 Restore(_initial);
+            }
         };
     }
 
@@ -183,7 +238,7 @@ public sealed class MeshDeformForm : Form
         private readonly int _textureWidth, _textureHeight;
         private readonly Action _changed;
         private readonly Action<Dictionary<int, VertexOffset>> _beforeEdit;
-        private readonly float _minX, _maxY, _spanX, _spanY;
+        private float _minX, _maxY, _spanX, _spanY;
         private int _dragVertex = -1;
         private Point _dragStart;
         private float[]? _startX, _startY, _falloff;
@@ -227,6 +282,21 @@ public sealed class MeshDeformForm : Form
 
         public void FitView()
         {
+            // Refit when mesh rotation swaps a long part's X/Y extents.
+            var positions = CurrentPositions();
+            if (positions.Length > 0)
+            {
+                var minX = positions.Min(p => p.X);
+                var maxX = positions.Max(p => p.X);
+                var minY = positions.Min(p => p.Y);
+                var maxY = positions.Max(p => p.Y);
+                var pad = Math.Max(0.7f,
+                    Math.Max(maxX - minX, maxY - minY) * 0.27f);
+                _minX = minX - pad;
+                _maxY = maxY + pad;
+                _spanX = Math.Max(0.01f, maxX - minX + 2 * pad);
+                _spanY = Math.Max(0.01f, maxY - minY + 2 * pad);
+            }
             _cameraZoom = 1f;
             _cameraPan = PointF.Empty;
             Invalidate();

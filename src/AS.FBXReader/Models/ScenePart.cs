@@ -19,6 +19,10 @@ public sealed class ScenePart
     public float OffsetY { get; set; }
     public bool RebuildBindPose { get; set; }
     public bool PreserveShape { get; set; }
+    // Per-mesh source-silhouette restoration; doesn't edit the FBX.
+    public bool ResetDeform { get; set; }
+    // Manual angle in degrees, positive = counterclockwise.
+    public float MeshRotationDegrees { get; set; }
     // Optional rig node to follow rigidly instead of the strongest mesh bone.
     public string? FollowBoneName { get; set; }
     // Per-vertex edits in the mesh's local coordinates, before skinning.

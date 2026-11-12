@@ -1507,12 +1507,20 @@ public sealed partial class MainForm : Form
             // Mesh editor must show the original LOCAL vertices and UV
             // layout, not an already bent/skinned frame from the animation.
             using var editor = new MeshDeformForm(part, mesh, texture,
-                () => mesh.Vertices.Select((vertex, i) =>
+                () =>
                 {
-                    var dx = part.VertexOffsets.TryGetValue(i, out var edit) ? edit.X : 0f;
-                    var dy = edit?.Y ?? 0f;
-                    return new PointF(vertex.X + dx, vertex.Y + dy);
-                }).ToArray(),
+                    var points = mesh.Vertices.Select((vertex, i) =>
+                    {
+                        var dx = part.VertexOffsets.TryGetValue(i, out var edit)
+                            ? edit.X : 0f;
+                        var dy = edit?.Y ?? 0f;
+                        return new OpenTK.Mathematics.Vector3(
+                            vertex.X + dx, vertex.Y + dy, vertex.Z);
+                    }).ToArray();
+                    MeshPoseCorrection.RotateAroundCenter(
+                        points, part.MeshRotationDegrees);
+                    return points.Select(pt => new PointF(pt.X, pt.Y)).ToArray();
+                },
                 _viewer.InvalidateScene);
             if (editor.ShowDialog(this) == DialogResult.OK)
                 _status.Text = $"Mesh shape updated: {part.DisplayName}. Save profile to keep it.";
@@ -1704,7 +1712,8 @@ public sealed partial class MainForm : Form
                 .ToDictionary(p => p.Id, p => p.Alias!, StringComparer.Ordinal),
             MeshAdjustments = _session.Parts
                 .Where(p => p.OffsetX != 0f || p.OffsetY != 0f || p.RebuildBindPose ||
-                            p.PreserveShape || p.FollowBoneName is not null || p.VertexOffsets.Count > 0)
+                            p.PreserveShape || p.ResetDeform || p.MeshRotationDegrees != 0f ||
+                             p.FollowBoneName is not null || p.VertexOffsets.Count > 0)
                 .ToDictionary(
                     p => p.Id,
                     p => new MeshAdjustmentProfile
@@ -1713,6 +1722,8 @@ public sealed partial class MainForm : Form
                         OffsetY = p.OffsetY,
                         RebuildBindPose = p.RebuildBindPose,
                         PreserveShape = p.PreserveShape,
+                        ResetDeform = p.ResetDeform,
+                        MeshRotationDegrees = p.MeshRotationDegrees,
                         FollowBoneName = p.FollowBoneName,
                         VertexOffsets = p.VertexOffsets.Values
                             .OrderBy(x => x.VertexIndex)
@@ -1840,6 +1851,10 @@ public sealed partial class MainForm : Form
             part.OffsetY = adjustment?.OffsetY ?? 0f;
             part.RebuildBindPose = adjustment?.RebuildBindPose ?? false;
             part.PreserveShape = adjustment?.PreserveShape ?? false;
+            part.ResetDeform = adjustment?.ResetDeform ?? false;
+            var angle = adjustment?.MeshRotationDegrees ?? 0f;
+            part.MeshRotationDegrees = float.IsFinite(angle)
+                ? Math.Clamp(angle, -360f, 360f) : 0f;
             part.FollowBoneName = adjustment?.FollowBoneName is string boneName &&
                 _session.NodesByName.ContainsKey(boneName) ? boneName : null;
             part.VertexOffsets.Clear();

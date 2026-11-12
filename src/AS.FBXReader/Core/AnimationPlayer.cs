@@ -149,6 +149,12 @@ public sealed class AnimationPlayer
             ? state.Global
             : Matrix4.Identity;
 
+    /// <summary>Original rest pose transform for an individual mesh correction.</summary>
+    public Matrix4 GetBindGlobalTransform(string nodeName)
+        => _states.TryGetValue(nodeName, out var state)
+            ? state.BindGlobal
+            : Matrix4.Identity;
+
     // Keeps the mesh in its original rest position while making it follow a
     // different rig node. Row-vector order: mesh bind -> target bind inverse
     // -> animated target -> animated mesh inverse. The renderer applies the

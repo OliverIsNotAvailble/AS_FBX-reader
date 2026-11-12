@@ -4,6 +4,15 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## VLote 1.1.5 — 2026-11-12 — Reset deform e rotação por mesh (Edit mesh shape)
+
+- Adicionados controles individuais **Reset deform (forma original)** e **Rotação da mesh (−360° a +360°, padrão 0°)** dentro do editor. Botão `Rotação 0°` restaura só o ângulo, sem alterar outros ajustes. Checkboxes não afetam outras malhas ou a geometria gravada no FBX; Cancel restaura os valores anteriores, Apply conserva os ajustes.
+- **Reset deform** desliga o skinning por pesos apenas da mesh selecionada e reconstrói seu contorno XY diretamente dos vértices originais. Mantém a posição base no modelo e acompanha apenas o deslocamento XY do osso dominante no decorrer da animação, sem herdar torções/rotações 3D dos ossos. É uma alternativa intencionalmente rígida para malhas SpriteSkin que quebram durante Play, e pode reduzir a flexibilidade original daquela peça.
+- **Rotação** aplica um giro 2D em torno do centro da mesh no preview, no editor e na exportação, inclusive com Reset deform desativado. Não reescreve UV, textura nem vértices FBX. A visualização do editor reajusta o enquadramento ao alterar o ângulo; a edição de pontos continua usando os mesmos deslocamentos locais.
+- Ambos os ajustes são armazenados separadamente no perfil de cada mesh (inclusive cópias) e são recuperados ao carregar; perfis antigos mantêm defaults `false` e `0°`. Preservados Preserve shape e Rebuild bind.
+- Novos testes smoke: forma original após simulação de osso inclinado −90°, ângulo reversível, preservação dos vértices originais, defaults independentes e serialização do perfil. Alterações **somente na VLote**: `MeshDeformForm.cs`, `SceneRenderer.cs`, novo `MeshPoseCorrection.cs`, `AnimationPlayer.cs`, `ScenePart.cs`, `VisibilityProfile.cs`, `FbxSession.cs`, `MainForm.cs`, testes, csproj e CHANGELOG. README intocado.
+- Limitação: Reset deform preserva o desenho mas remove **deformação flexível** daquela mesh. O acompanhamento de movimento é feito por translação do osso dominante; rotações naturais desse osso precisam ser ajustadas manualmente no novo campo de rotação. Validar visualmente a `3_legL1` do `cg10.fbx` durante Play e na exportação.
+
 ## VLote 1.1.4 — 2026-11-12 — Correção da mesh torta (bind e editor)
 
 - Diagnóstico do `cg10.fbx` anexado: os 2.327 vértices da `3_legL1`, 2.809 da `5_pigu` e 1.594 da `6_yao` reproduzem fielmente as UVs das PNGs por uma única transformação afim, com erro máximo menor que 0,000001 unidade. A deformação apresentada no editor não é causada pelo formato da PNG nem pela geometria original.

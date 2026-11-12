@@ -467,6 +467,48 @@ public sealed class SceneRenderer : IDisposable
         if (_player is null)
             return Array.Empty<Vector3>();
 
+        if (part.ResetDeform)
+        {
+            // Rebuild the native 2D silhouette from mesh vertices only.
+            // Follow the main animated bone's POSITION, never its rotation
+            // or per-vertex weights. This is an opt-in fix for this mesh only.
+            var local = new Vector3[mesh.VertexCount];
+            for (var i = 0; i < mesh.VertexCount; i++)
+            {
+                local[i] = MatrixUtil.ToOpenTk(mesh.Vertices[i]);
+                if (part.VertexOffsets.TryGetValue(i, out var edit))
+                    local[i] += new Vector3(edit.X, edit.Y, 0f);
+            }
+            var animatedTranslation = Vector3.Zero;
+            if (mesh.HasBones && mesh.BoneCount > 0)
+            {
+                var mainBone = mesh.Bones
+                    .OrderByDescending(b => b.VertexWeights.Sum(w => w.Weight))
+                    .FirstOrDefault();
+                if (mainBone is not null && !string.IsNullOrWhiteSpace(mainBone.Name))
+                {
+                    var animated = _player.GetGlobalTransform(mainBone.Name);
+                    var rest = _player.GetBindGlobalTransform(mainBone.Name);
+                    animatedTranslation = new Vector3(
+                        animated.M41 - rest.M41, animated.M42 - rest.M42, 0f);
+                }
+            }
+            else
+            {
+                var animated = _player.GetGlobalTransform(node.Name);
+                var rest = _player.GetBindGlobalTransform(node.Name);
+                animatedTranslation = new Vector3(
+                    animated.M41 - rest.M41, animated.M42 - rest.M42, 0f);
+            }
+            var corrected = MeshPoseCorrection.Undeform(
+                local, _player.GetBindGlobalTransform(node.Name), animatedTranslation);
+            MeshPoseCorrection.RotateAroundCenter(corrected, part.MeshRotationDegrees);
+            var pos = new Vector3(part.OffsetX, part.OffsetY, 0f);
+            for (var i = 0; i < corrected.Length; i++)
+                corrected[i] += pos;
+            return corrected;
+        }
+
         var boneMatrices = mesh.HasBones
             ? _player.GetBoneMatrices(node, mesh, part.RebuildBindPose || part.PreserveShape)
             : Array.Empty<Matrix4>();
@@ -532,6 +574,7 @@ public sealed class SceneRenderer : IDisposable
                 new Vector3(part.OffsetX, part.OffsetY, 0f);
         }
 
+        MeshPoseCorrection.RotateAroundCenter(positions, part.MeshRotationDegrees);
         return positions;
     }
 
