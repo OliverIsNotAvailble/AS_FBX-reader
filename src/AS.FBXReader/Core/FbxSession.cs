@@ -9,6 +9,9 @@ public sealed class FbxSession : IDisposable
 {
     private readonly AssimpContext _context = new();
     private readonly Dictionary<string, Node> _nodesByName = new(StringComparer.Ordinal);
+    // Texture/Video nodes may be disconnected from Material::Diffuse in some FBXs.
+    private readonly Dictionary<string, string> _textureByName =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public string FilePath { get; private set; } = string.Empty;
     public Scene? Scene { get; private set; }
@@ -196,6 +199,7 @@ public sealed class FbxSession : IDisposable
         if (Scene is null || Scene.RootNode is null)
             throw new InvalidDataException("Assimp did not return a valid FBX scene.");
 
+        IndexTextureFiles();
         IndexNodes(Scene.RootNode);
         IndexParts(Scene.RootNode);
         _originalParts.AddRange(Parts);
@@ -204,27 +208,137 @@ public sealed class FbxSession : IDisposable
 
     public string ResolveTexturePath(Material material)
     {
+        // Respect a real Diffuse connection first. The source FBX was staged
+        // for Assimp's ANSI import, so resolve paths against the ORIGINAL FBX.
+        if (TryDiffusePath(material, out var diffuse))
+            return diffuse;
+
+        // Some game/Unity FBXs define materials named "21_head", "8_body",
+        // etc. and list matching textures/21_head.png as disconnected FBX
+        // Texture/Video objects. Assimp correctly exposes no Diffuse slot in
+        // this case. A strict material-name lookup recovers the individual PNG
+        // without assigning a random atlas or changing geometry/UVs.
+        var name = TextureStem(material.Name);
+        return name.Length > 0 && _textureByName.TryGetValue(name, out var path)
+            ? path
+            : string.Empty;
+    }
+
+    public (int Linked, int MatchedByName, int Missing) TextureDiagnostics()
+    {
+        if (Scene is null)
+            return (0, 0, 0);
+
+        var linked = 0;
+        var matched = 0;
+        var missing = 0;
+        foreach (var material in Scene.Materials)
+        {
+            if (TryDiffusePath(material, out _))
+                linked++;
+            else if (!string.IsNullOrWhiteSpace(ResolveTexturePath(material)))
+                matched++;
+            else
+                missing++;
+        }
+        return (linked, matched, missing);
+    }
+
+    private bool TryDiffusePath(Material material, out string path)
+    {
+        path = string.Empty;
         if (!material.GetMaterialTexture(TextureType.Diffuse, 0, out var slot))
-            return string.Empty;
+            return false;
 
-        var raw = (slot.FilePath ?? string.Empty)
-            .Replace('\\', Path.DirectorySeparatorChar)
-            .Replace('/', Path.DirectorySeparatorChar);
-        if (string.IsNullOrWhiteSpace(raw))
-            return string.Empty;
+        var raw = slot.FilePath?.Trim();
+        if (string.IsNullOrWhiteSpace(raw) || FilePath.Length == 0)
+            return false;
 
-        var sourceDir = Path.GetDirectoryName(FilePath)!;
-        var expected = Path.IsPathRooted(raw)
-            ? raw
-            : Path.GetFullPath(Path.Combine(sourceDir, raw));
-        if (File.Exists(expected))
-            return expected;
+        raw = raw.Replace('/', Path.DirectorySeparatorChar)
+                 .Replace('\\', Path.DirectorySeparatorChar);
+        var baseDir = Path.GetDirectoryName(FilePath)!;
+        var absolute = Path.IsPathRooted(raw) ? raw : Path.Combine(baseDir, raw);
+        if (File.Exists(absolute))
+        {
+            path = Path.GetFullPath(absolute);
+            return true;
+        }
 
-        // AssetStudio often references "textures/atlas.png" even when its
-        // extracted atlas was saved beside the FBX rather than in textures/.
-        // Preserve the original lookup first; fall back to the sibling PNG.
-        var sibling = Path.Combine(sourceDir, Path.GetFileName(raw));
-        return File.Exists(sibling) ? sibling : expected;
+        // VLote legacy behavior: atlas sometimes sits beside the FBX even
+        // when referenced as "textures/atlas.png".
+        var sibling = Path.Combine(baseDir, Path.GetFileName(raw));
+        if (File.Exists(sibling))
+        {
+            path = Path.GetFullPath(sibling);
+            return true;
+        }
+
+        // Even connected Diffuse paths can point to an old drive/location.
+        // Use only an exact filename match, never an arbitrary material.
+        var name = TextureStem(raw);
+        if (name.Length > 0 && _textureByName.TryGetValue(name, out var found))
+        {
+            path = found;
+            return true;
+        }
+        return false;
+    }
+
+    private void IndexTextureFiles()
+    {
+        _textureByName.Clear();
+        if (FilePath.Length == 0)
+            return;
+        var folder = Path.GetDirectoryName(FilePath)!;
+        if (!Directory.Exists(folder))
+            return;
+
+        // Prefer the conventional textures/ folder over any loose images in
+        // the project root; scan only immediate folders (not the whole disk).
+        var candidates = new List<string>();
+        try
+        {
+            foreach (var sub in Directory.EnumerateDirectories(folder))
+            {
+                if (new[] { "textures", "texture", "images" }.Contains(
+                        Path.GetFileName(sub), StringComparer.OrdinalIgnoreCase))
+                    candidates.Add(sub);
+            }
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+
+        candidates.Add(folder);
+        foreach (var directory in candidates)
+        {
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(directory))
+                {
+                    if (!new[] { ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff" }
+                            .Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
+                        continue;
+                    var key = TextureStem(file);
+                    if (key.Length > 0)
+                        _textureByName.TryAdd(key, file);
+                }
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    private static string TextureStem(string value)
+    {
+        // Assimp can expose "Material::21_head" or the FBX's internal
+        // "\0\1Material" separator. Strip these without changing the real
+        // filename (including underscores, digits and case-insensitive names).
+        var clean = value.Split('\0')[0].Trim().Replace('\\', '/');
+        var sep = clean.LastIndexOf("::", StringComparison.Ordinal);
+        if (sep >= 0)
+            clean = clean[(sep + 2)..];
+        var filename = clean[(clean.LastIndexOf('/') + 1)..];
+        return Path.GetFileNameWithoutExtension(filename).Trim();
     }
 
     private static void EnsureAssimpLoadedFromAnsiSafePath()
@@ -454,6 +568,7 @@ public sealed class FbxSession : IDisposable
         _originalParts.Clear();
         Animations.Clear();
         _nodesByName.Clear();
+        _textureByName.Clear();
     }
 
     public void Dispose()

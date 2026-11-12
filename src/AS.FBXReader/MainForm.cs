@@ -824,9 +824,14 @@ public sealed partial class MainForm : Form
             ? $" | {_player.RestoredCollapsedAncestors} zero-scale parent(s) restored"
             : string.Empty;
 
+        var (linked, byName, missing) = _session.TextureDiagnostics();
+        var textures = $" | textures: {linked} linked + {byName} matched by material name";
+        if (missing > 0)
+            textures += $" | {missing} unresolved (check textures/ folder)";
+
         _status.Text = $"{Path.GetFileName(path)} | {_session.Parts.Count} parts | " +
-            $"{_session.Animations.Count} animations{safeNote}{rawScaleNote}{staticRecoveryNote}{duplicateNote}{scaleNote}{ancestorNote}{sourceNote}{bindNote} | " +
-            "VLote: preview principal, _EXT, _OK / _Null";
+            $"{_session.Animations.Count} animations{safeNote}{rawScaleNote}{staticRecoveryNote}{duplicateNote}{scaleNote}{ancestorNote}{sourceNote}{bindNote}" +
+            textures + " | VLote: preview principal, _EXT, _OK / _Null";
     }
 
     private void BuildDefaultPartTree()

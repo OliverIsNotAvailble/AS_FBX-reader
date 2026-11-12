@@ -4,6 +4,14 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## VLote 1.1.3 — 2026-11-11 — Texturas individuais recuperadas + inicializador BAT
+
+- Portada para **VLote** a correção de texturas que funcionou na `main`: quando um FBX não vincula Texture/Video ao `Material::Diffuse`, procurar PNG/JPG por **nome exato do material** na pasta do FBX e nas subpastas imediatas `textures`, `texture` e `images`, preservando ligações Diffuse existentes e o fallback VLote para arquivos de atlas ao lado do FBX.
+- Preview, modo 3D, exportador e editor de malhas usam a mesma resolução de texturas. A barra de status mostra texturas vinculadas, recuperadas pelo nome e não encontradas; o editor de malhas mostra a PNG ou avisa se não houver.
+- Mantidos o modo em lote e as correções específicas de VLote (fila, exportação `_EXT`, `_OK/_Null`, importação segura, animações e nomenclatura das saídas).
+- Adicionado `INICIAR_VLOTE.bat` na raiz: duplo clique executa `dotnet run --project src\\AS.FBXReader\\AS.FBXReader.csproj --configuration Release`, compilando e iniciando pelo SDK instalado sem empacotar ZIP compilado.
+- Atualizados `FbxSession.cs`, `MainForm.cs`, `MeshDeformForm.cs`, `AS.FBXReader.csproj` e `CHANGELOG.md`. README não foi alterado. Compilação local/validação visual do FBX ainda pendentes.
+
 ## VLote — ajuste preparado para próxima utilização (2026-11-06; sem alterar versão)
 
 - Removida a numeração automática `001_`, `002_`, `003_` dos arquivos exportados no modo VLote. Os vídeos agora conservam o nome original da animação (`Idle.webp`, `Attack.mp4` etc.), sem prefixos por posição.
