@@ -1714,8 +1714,10 @@ public sealed partial class MainForm : Form
                 .ToDictionary(p => p.Id, p => p.Alias!, StringComparer.Ordinal),
             MeshAdjustments = _session.Parts
                 .Where(p => p.OffsetX != 0f || p.OffsetY != 0f || p.RebuildBindPose ||
-                            p.PreserveShape || p.ResetDeform || p.MeshRotationDegrees != 0f ||
-                             p.MeshFlipHorizontal || p.FollowBoneName is not null || p.VertexOffsets.Count > 0)
+                            p.PreserveShape || p.ResetDeform ||
+                             MathF.Abs(p.ResetMotionStrength -
+                                 ScenePart.DefaultResetMotionStrength) > 0.0001f ||
+                             p.MeshRotationDegrees != 0f || p.MeshFlipHorizontal || p.FollowBoneName is not null || p.VertexOffsets.Count > 0)
                 .ToDictionary(
                     p => p.Id,
                     p => new MeshAdjustmentProfile
@@ -1725,6 +1727,7 @@ public sealed partial class MainForm : Form
                         RebuildBindPose = p.RebuildBindPose,
                         PreserveShape = p.PreserveShape,
                         ResetDeform = p.ResetDeform,
+                        ResetMotionStrength = p.ResetMotionStrength,
                         MeshRotationDegrees = p.MeshRotationDegrees,
                         MeshFlipHorizontal = p.MeshFlipHorizontal,
                         FollowBoneName = p.FollowBoneName,
@@ -1855,6 +1858,11 @@ public sealed partial class MainForm : Form
             part.RebuildBindPose = adjustment?.RebuildBindPose ?? false;
             part.PreserveShape = adjustment?.PreserveShape ?? false;
             part.ResetDeform = adjustment?.ResetDeform ?? false;
+            var strength = adjustment?.ResetMotionStrength ??
+                ScenePart.DefaultResetMotionStrength;
+            part.ResetMotionStrength = float.IsFinite(strength)
+                ? Math.Clamp(strength, 0f, 1f)
+                : ScenePart.DefaultResetMotionStrength;
             var angle = adjustment?.MeshRotationDegrees ?? 0f;
             part.MeshRotationDegrees = float.IsFinite(angle)
                 ? Math.Clamp(angle, -360f, 360f) : 0f;

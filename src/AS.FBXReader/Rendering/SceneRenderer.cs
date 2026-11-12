@@ -519,8 +519,13 @@ public sealed class SceneRenderer : IDisposable
                 _player.GetBindGlobalTransform(followBone),
                 _player.GetGlobalTransform(followBone),
                 restAnchor);
+            // Motion strength changes only the magnitude of the rigid
+            // displacement; the source mesh's silhouette stays unchanged.
+            // The normal skinned animation path is not affected.
+            var gentleMotion = MeshPoseCorrection.ScaleMotion(
+                animatedTranslation, part.ResetMotionStrength);
             for (var i = 0; i < corrected.Length; i++)
-                corrected[i] += animatedTranslation;
+                corrected[i] += gentleMotion;
             MeshPoseCorrection.RotateAroundCenter(corrected, part.MeshRotationDegrees);
             if (part.MeshFlipHorizontal)
                 MeshPoseCorrection.FlipHorizontal(corrected);

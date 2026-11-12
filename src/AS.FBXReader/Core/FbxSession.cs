@@ -100,6 +100,7 @@ public sealed class FbxSession : IDisposable
             RebuildBindPose = source.RebuildBindPose,
             PreserveShape = source.PreserveShape,
             ResetDeform = source.ResetDeform,
+            ResetMotionStrength = source.ResetMotionStrength,
             MeshRotationDegrees = source.MeshRotationDegrees,
             MeshFlipHorizontal = source.MeshFlipHorizontal,
             FollowBoneName = source.FollowBoneName

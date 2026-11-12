@@ -4,6 +4,14 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## VLote 1.1.9 — 2026-11-12 — Intensidade ajustável do movimento do Reset deform
+
+- O `Reset deform` da `42Head` de `cg2.fbx` já preserva o formato e segue o osso escolhido, mas o movimento da âncora às vezes é muito amplo em relação a olhos e cabelo. Acrescentado **Força do movimento (%)**, um NumericUpDown individual em `Edit mesh shape`, disponível apenas quando `Reset deform` está ativado. Aceita 0–100%, incrementos de 5%; começa em **35%** para permitir acompanhamento suave sem deslocamentos extremos. 0% mantém a peça em repouso; 100% reproduz o acompanhamento rígido anterior.
+- Apenas o **deslocamento** calculado da âncora do osso selecionado é multiplicado pelo fator (sem modificar as transformações do FBX, rig, pesos, vértices, UVs ou a deformação do resto do personagem). A forma, escala, orientação e rotação manual da mesh continuam preservadas. O fluxo normal (Reset deform desligado) segue inalterado. Preview e export usam o mesmo fator.
+- `ResetMotionStrength` (float 0–1) salvo por mesh em `MeshAdjustmentProfile` e preservado em cópias. **Compatibilidade:** perfis antigos sem a propriedade e meshes recém-adicionadas passam a ter fator padrão 0,35; perfis novos com valor próprio recuperam o percentual salvo. Cancel restaura o valor original antes da edição; Apply mantém.
+- Testes em `VLoteSmoke` verificam 0%, 35%, 100%, clamp, preservação de forma, default em novos objetos, migração de JSON antigo, serialização de percentual personalizado. Confirmação visual no `cg2.fbx` continua necessária; intensidade do movimento não substitui sincronização exata das curvas dos ossos em casos com canais incompatíveis.
+- Alterações apenas na `VLote`: `ScenePart.cs`, `VisibilityProfile.cs`, `FbxSession.cs`, `MeshPoseCorrection.cs`, `SceneRenderer.cs`, `MeshDeformForm.cs`, `MainForm.cs`, `tests/VLoteSmoke/Program.cs`, csproj e CHANGELOG; README e main intactos.
+
 ## VLote 1.1.8 — 2026-11-12 — Reset deform segue movimento real do osso (cg2 Head/Face)
 
 - Corrigido o movimento invertido da `42Head` quando `Reset deform` estava ligado: a implementação anterior somava apenas a diferença `boneAnimated.M41/M42 - boneRest.M41/M42`, o que representa deslocamento da **origem do osso**, não o deslocamento da **mesh presa nele**. Essa aproximação erra quando a hierarquia tem pivôs, rotação e eixos espelhados (como cg2), causando movimento oposto ou sem acompanhamento relativo aos olhos/cabelo.

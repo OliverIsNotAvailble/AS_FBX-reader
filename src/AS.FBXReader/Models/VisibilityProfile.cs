@@ -55,6 +55,8 @@ public sealed class MeshAdjustmentProfile
     public bool RebuildBindPose { get; set; }
     public bool PreserveShape { get; set; }
     public bool ResetDeform { get; set; }
+    // Initializer preserves the gentle 35% default for older JSON profiles.
+    public float ResetMotionStrength { get; set; } = ScenePart.DefaultResetMotionStrength;
     public float MeshRotationDegrees { get; set; }
     public bool MeshFlipHorizontal { get; set; }
     public string? FollowBoneName { get; set; }

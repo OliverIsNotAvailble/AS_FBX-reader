@@ -67,6 +67,19 @@ public static class MeshPoseCorrection
     }
 
     /// <summary>
+    /// Damp the selected bone's anchor movement without changing the mesh
+    /// silhouette or disturbing other parts. The factor is per mesh (0..1):
+    /// 0 = fixed at its rest position, 0.35 = gentle follow, 1 = full follow.
+    /// The rig and the original animation remain untouched.
+    /// </summary>
+    public static Vector3 ScaleMotion(Vector3 fullDelta, float strength)
+    {
+        if (!float.IsFinite(strength))
+            strength = 0f;
+        return fullDelta * Math.Clamp(strength, 0f, 1f);
+    }
+
+    /// <summary>
     /// Horizontal mirror of the drawable around its own center. Only X
     /// changes: Y, Z, UV coordinates, mesh topology, animation and bones are
     /// untouched. Applying it twice restores the previous positions.

@@ -14,6 +14,7 @@ public sealed class MeshDeformForm : Form
     private readonly ScenePart _part;
     private readonly Dictionary<int, VertexOffset> _initial;
     private readonly bool _initialResetDeform;
+    private readonly float _initialResetMotionStrength;
     private readonly float _initialRotationDegrees;
     private readonly bool _initialFlipHorizontal;
     private readonly Stack<Dictionary<int, VertexOffset>> _undo = new();
@@ -26,6 +27,7 @@ public sealed class MeshDeformForm : Form
         _part = part;
         _initial = Snapshot();
         _initialResetDeform = part.ResetDeform;
+        _initialResetMotionStrength = part.ResetMotionStrength;
         _initialRotationDegrees = part.MeshRotationDegrees;
         _initialFlipHorizontal = part.MeshFlipHorizontal;
         Text = $"Edit mesh shape — {part.DisplayName}";
@@ -138,6 +140,41 @@ public sealed class MeshDeformForm : Form
             previewChanged();
         };
         toolbar.Controls.Add(resetDeform);
+
+        // Per-mesh follow sensitivity: lower values reduce head/face drift
+        // relative to the other animated parts without deforming the image.
+        // The control is intentionally independent of manual mesh rotation.
+        var motionStrength = new NumericUpDown
+        {
+            Minimum = 0,
+            Maximum = 100,
+            DecimalPlaces = 0,
+            Increment = 5,
+            Width = 70,
+            Enabled = part.ResetDeform,
+            Value = Math.Clamp(
+                (decimal)Math.Round(
+                    100f * (float.IsFinite(part.ResetMotionStrength)
+                        ? part.ResetMotionStrength
+                        : ScenePart.DefaultResetMotionStrength)),
+                0m, 100m)
+        };
+        resetDeform.CheckedChanged += (_, _) =>
+            motionStrength.Enabled = resetDeform.Checked;
+        motionStrength.ValueChanged += (_, _) =>
+        {
+            part.ResetMotionStrength = (float)motionStrength.Value / 100f;
+            previewChanged();
+            _hint.Text = $"Força do movimento: {motionStrength.Value:0}% " +
+                "(0% = parado, 35% = suave, 100% = integral). Save profile after Apply.";
+        };
+        toolbar.Controls.Add(new Label
+        {
+            Text = "Força do movimento (%):",
+            AutoSize = true,
+            Padding = new Padding(10, 5, 0, 0)
+        });
+        toolbar.Controls.Add(motionStrength);
         toolbar.Controls.Add(new Label
         {
             Text = "Rotação da mesh (graus):",
@@ -225,6 +262,7 @@ public sealed class MeshDeformForm : Form
             if (DialogResult != DialogResult.OK)
             {
                 _part.ResetDeform = _initialResetDeform;
+                _part.ResetMotionStrength = _initialResetMotionStrength;
                 _part.MeshRotationDegrees = _initialRotationDegrees;
                 _part.MeshFlipHorizontal = _initialFlipHorizontal;
                 Restore(_initial);

@@ -177,6 +177,46 @@ Check((afterResetMovement[1] - afterResetMovement[0] -
        (cg2Restored[1] - cg2Restored[0])).Length < 0.0001f,
     "Reset bone motion translates the 530x head without deformation");
 
+// Per-mesh Reset deform strength limits the bone anchor movement without
+// changing its direction or skewing/stretching the 2D sprite silhouette.
+var sampleMotion = new OpenTK.Mathematics.Vector3(100f, -40f, 0f);
+var mild = MeshPoseCorrection.ScaleMotion(sampleMotion, 0.35f);
+Check((mild - new OpenTK.Mathematics.Vector3(35f, -14f, 0f)).Length < 0.0001f,
+    "Reset deform follows only 35% of selected bone displacement by default");
+Check(MeshPoseCorrection.ScaleMotion(sampleMotion, 0f).Length < 0.0001f,
+    "Reset deform 0 percent leaves the sprite in its original position");
+Check((MeshPoseCorrection.ScaleMotion(sampleMotion, 1f) -
+    sampleMotion).Length < 0.0001f,
+    "Reset deform 100 percent preserves the old follow behavior");
+Check((MeshPoseCorrection.ScaleMotion(sampleMotion, 2f) -
+    sampleMotion).Length < 0.0001f &&
+    MeshPoseCorrection.ScaleMotion(sampleMotion, -0.5f).Length < 0.0001f,
+    "Reset deform strength is clamped to 0..100 percent");
+var oldStrengthProfile = System.Text.Json.JsonSerializer
+    .Deserialize<MeshAdjustmentProfile>("{\"ResetDeform\":true}")!;
+Check(oldStrengthProfile.ResetMotionStrength ==
+      ScenePart.DefaultResetMotionStrength,
+    "old profiles without movement strength migrate to 35 percent");
+var gentlePart = new ScenePart {
+    Id = "gentle", Name = "gentle", NodeName = "node", MeshIndex = 0
+};
+Check(gentlePart.ResetMotionStrength == ScenePart.DefaultResetMotionStrength &&
+      !gentlePart.ResetDeform,
+    "new meshes default to gentle follow but unchanged regular skinning");
+var userStrength = new MeshAdjustmentProfile {
+    ResetDeform = true, ResetMotionStrength = 0.2f
+};
+var savedStrength = System.Text.Json.JsonSerializer.Serialize(userStrength);
+var loadedStrength = System.Text.Json.JsonSerializer
+    .Deserialize<MeshAdjustmentProfile>(savedStrength)!;
+Check(loadedStrength.ResetDeform &&
+      MathF.Abs(loadedStrength.ResetMotionStrength - 0.2f) < 0.0001f,
+    "custom movement strength persists in per-mesh profiles");
+var pureTranslation = cg2Restored.Select(p => p + mild).ToArray();
+Check((pureTranslation[1] - pureTranslation[0] -
+       (cg2Restored[1] - cg2Restored[0])).Length < 0.0001f,
+    "attenuated follow does not deform original 530x mesh shape");
+
 var rotatedLeg = straightLeg.ToArray();
 MeshPoseCorrection.RotateAroundCenter(rotatedLeg, 90f);
 Check(MathF.Abs((rotatedLeg[1] - rotatedLeg[0]).Length -

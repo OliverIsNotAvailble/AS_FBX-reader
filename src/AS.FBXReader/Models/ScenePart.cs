@@ -2,6 +2,8 @@ namespace AS.FBXReader.Models;
 
 public sealed class ScenePart
 {
+    // Gentle default: full rig-follow motion can overdrive a flattened mesh.
+    public const float DefaultResetMotionStrength = 0.35f;
     public required string Id { get; init; }
     public required string Name { get; init; }
     public string? Alias { get; set; }
@@ -21,6 +23,8 @@ public sealed class ScenePart
     public bool PreserveShape { get; set; }
     // Per-mesh source-silhouette restoration; doesn't edit the FBX.
     public bool ResetDeform { get; set; }
+    // Portion of the selected bone's rigid anchor movement (0=still, 1=full).
+    public float ResetMotionStrength { get; set; } = DefaultResetMotionStrength;
     // Manual angle in degrees, positive = counterclockwise.
     public float MeshRotationDegrees { get; set; }
     // Mirror this drawable along its horizontal axis, after animation/rotation.
