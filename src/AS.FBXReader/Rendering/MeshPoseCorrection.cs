@@ -9,29 +9,33 @@ namespace AS.FBXReader.Rendering;
 public static class MeshPoseCorrection
 {
     /// <summary>
-    /// Keep the original local XY silhouette and follow only XY translation
-    /// from the dominant animated bone. Rotations, shear and weighted skinning
-    /// cannot distort the source artwork while Reset deform is enabled.
+    /// Flatten a tilted SpriteSkin mesh onto its parent's original XY plane.
+    /// The parent rest matrix retains authored scale, horizontal mirroring
+    /// and rotation. A mesh's own X/Y tilt is intentionally removed, but its
+    /// original translation is kept via the full mesh rest origin.
+    ///
+    /// This is essential for FBXs such as cg2, whose root has 530x scale and
+    /// a horizontal mirror: using raw vertices without that parent matrix
+    /// makes a head appear normal by itself but ~530x smaller alongside eyes.
     /// </summary>
     public static Vector3[] Undeform(
         IReadOnlyList<Vector3> localVertices, Matrix4 restGlobal,
-        Vector3 animatedTranslation)
+        Matrix4 parentRestGlobal, Vector3 animatedTranslation)
     {
         var result = new Vector3[localVertices.Count];
         if (result.Length == 0)
             return result;
-        var center = Vector3.Zero;
-        foreach (var p in localVertices)
-            center += p;
-        center /= result.Length;
-        var pivot = Vector3.TransformPosition(center, restGlobal);
+
+        // TransformPosition uses OpenTK's row-vector convention. The mesh
+        // origin includes its own local translation, while its 2D axes use
+        // the parent plane instead of the out-of-plane mesh-local rotation.
+        var origin = Vector3.TransformPosition(Vector3.Zero, restGlobal);
+        var parentOrigin = Vector3.TransformPosition(Vector3.Zero, parentRestGlobal);
         for (var i = 0; i < result.Length; i++)
         {
-            var p = localVertices[i];
-            result[i] = new Vector3(
-                pivot.X + p.X - center.X + animatedTranslation.X,
-                pivot.Y + p.Y - center.Y + animatedTranslation.Y,
-                pivot.Z + animatedTranslation.Z);
+            var planar = Vector3.TransformPosition(localVertices[i], parentRestGlobal)
+                - parentOrigin;
+            result[i] = origin + planar + animatedTranslation;
         }
         return result;
     }

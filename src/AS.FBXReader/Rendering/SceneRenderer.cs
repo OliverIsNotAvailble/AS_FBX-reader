@@ -501,7 +501,9 @@ public sealed class SceneRenderer : IDisposable
                     animated.M41 - rest.M41, animated.M42 - rest.M42, 0f);
             }
             var corrected = MeshPoseCorrection.Undeform(
-                local, _player.GetBindGlobalTransform(node.Name), animatedTranslation);
+                local, _player.GetBindGlobalTransform(node.Name),
+                _player.GetBindParentGlobalTransform(node.Name),
+                animatedTranslation);
             MeshPoseCorrection.RotateAroundCenter(corrected, part.MeshRotationDegrees);
             if (part.MeshFlipHorizontal)
                 MeshPoseCorrection.FlipHorizontal(corrected);

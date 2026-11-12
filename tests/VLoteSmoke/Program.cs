@@ -90,6 +90,7 @@ var sourceLeg = rawLeg.ToArray();
 var badlyTilted = OpenTK.Mathematics.Matrix4.CreateRotationX(
     -MathF.PI / 2f) * OpenTK.Mathematics.Matrix4.CreateTranslation(5f, 3f, 0f);
 var straightLeg = MeshPoseCorrection.Undeform(rawLeg, badlyTilted,
+    OpenTK.Mathematics.Matrix4.Identity,
     new OpenTK.Mathematics.Vector3(2f, -1f, 0f));
 Check(MathF.Abs((straightLeg[1] - straightLeg[0]).Length - 4f) < 0.0001f &&
       MathF.Abs((straightLeg[2] - straightLeg[0]).Length - 2f) < 0.0001f &&
@@ -97,6 +98,44 @@ Check(MathF.Abs((straightLeg[1] - straightLeg[0]).Length - 4f) < 0.0001f &&
     "Reset deform keeps source-image shape despite -90deg bone tilt");
 Check(rawLeg.SequenceEqual(sourceLeg),
     "Reset deform never changes source vertices");
+
+// Regression for the actual cg2.fbx layout: root cg2 has 530x scale
+// and -180X / 180Z rotation (horizontal X mirror), while 42Head has
+// a local ~90-degree X tilt. Both root scale and mirror MUST survive Reset.
+// Prior implementation dropped the 530x scale and the X sign, making
+// 42Head look fine alone (auto-fit) but effectively invisible with Face4.
+var cg2Parent = OpenTK.Mathematics.Matrix4.CreateScale(-530f, 530f, -1f);
+var cg2HeadRest = OpenTK.Mathematics.Matrix4.CreateRotationX(
+    MathF.PI / 2f) *
+    OpenTK.Mathematics.Matrix4.CreateTranslation(0f, 0.09f, 0f) *
+    cg2Parent;
+var cg2HeadCorners = new[] {
+    new OpenTK.Mathematics.Vector3(0.8831979f, 0.39272803f, 0f),
+    new OpenTK.Mathematics.Vector3(1.32479751f, 0.92291039f, 0f),
+};
+var cg2Restored = MeshPoseCorrection.Undeform(cg2HeadCorners, cg2HeadRest,
+    cg2Parent, OpenTK.Mathematics.Vector3.Zero);
+var realHeadWidth = (1.32479751f - 0.8831979f) * 530f;
+var realHeadHeight = (0.92291039f - 0.39272803f) * 530f;
+Check(MathF.Abs(MathF.Abs(cg2Restored[1].X - cg2Restored[0].X) -
+                realHeadWidth) < 0.02f &&
+      MathF.Abs(cg2Restored[1].Y - cg2Restored[0].Y -
+                realHeadHeight) < 0.02f,
+    "cg2 42Head Reset keeps original 530x shape size (not subpixel with Face4)");
+Check(cg2Restored[1].X < cg2Restored[0].X,
+    "cg2 Reset keeps existing root X mirror instead of flipping orientation");
+var cg2FaceCenter = OpenTK.Mathematics.Vector3.TransformPosition(
+    new OpenTK.Mathematics.Vector3(1.05f, 0.64f, 0f), cg2Parent);
+Check(cg2FaceCenter.X >= MathF.Min(cg2Restored[0].X, cg2Restored[1].X) &&
+      cg2FaceCenter.X <= MathF.Max(cg2Restored[0].X, cg2Restored[1].X) &&
+      cg2FaceCenter.Y >= MathF.Min(cg2Restored[0].Y, cg2Restored[1].Y) &&
+      cg2FaceCenter.Y <= MathF.Max(cg2Restored[0].Y, cg2Restored[1].Y),
+    "cg2 Face4 position overlaps Reset-corrected 42Head bounds");
+var cg2Move = MeshPoseCorrection.Undeform(cg2HeadCorners, cg2HeadRest,
+    cg2Parent, new OpenTK.Mathematics.Vector3(24f, -12f, 0f));
+Check(MathF.Abs(cg2Move[0].X - cg2Restored[0].X - 24f) < 0.001f &&
+      MathF.Abs(cg2Move[0].Y - cg2Restored[0].Y + 12f) < 0.001f,
+    "cg2 corrected mesh still follows animated bone translation");
 var rotatedLeg = straightLeg.ToArray();
 MeshPoseCorrection.RotateAroundCenter(rotatedLeg, 90f);
 Check(MathF.Abs((rotatedLeg[1] - rotatedLeg[0]).Length -

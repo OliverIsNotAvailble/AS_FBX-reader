@@ -155,6 +155,16 @@ public sealed class AnimationPlayer
             ? state.BindGlobal
             : Matrix4.Identity;
 
+    /// <summary>
+    /// Parent rest transform keeps the FBX's authored sprite axes and scale.
+    /// A mesh-local X rotation (for example 90°) may tip its Y axis into Z;
+    /// Reset deform must undo that tilt, NOT throw away its parent transform.
+    /// </summary>
+    public Matrix4 GetBindParentGlobalTransform(string nodeName)
+        => _states.TryGetValue(nodeName, out var state)
+            ? state.Parent?.BindGlobal ?? Matrix4.Identity
+            : Matrix4.Identity;
+
     // Keeps the mesh in its original rest position while making it follow a
     // different rig node. Row-vector order: mesh bind -> target bind inverse
     // -> animated target -> animated mesh inverse. The renderer applies the

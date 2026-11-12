@@ -4,6 +4,15 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## VLote 1.1.7 — 2026-11-12 — Corrigido Reset deform que espelhava e sumia com outras meshes
+
+- Analisado o `cg2.fbx` real enviado pelo usuário e as telas de `42Head` e `Face4`: a raiz `cg2` contém **escala 530×** e orientação horizontal invertida (rotações −180° X e +180° Z); a mesh `42Head` tem rotação local X ≈ 90° e coordenadas de origem entre X 0,88–1,32 e Y 0,39–0,92, enquanto `Face4` está na escala/orientação da raiz.
+- **Causa comprovada no código anterior**: o método `MeshPoseCorrection.Undeform` usava só a posição transformada do centro mais os deltas locais sem escala. A `42Head` era renderizada com largura inferior a uma unidade, enquanto `Face4` tinha largura de ~173 unidades em mundo. Sozinha, a cabeça parecia grande pela câmera auto-fit, mas desaparecia ao mostrar `Face4` porque ficava centenas de vezes menor. O método também descartava o espelhamento X herdado da raiz, mostrando a cabeça do lado contrário.
+- **Correção restrita ao Reset deform por mesh:** usar a transformação de repouso da **hierarquia pai** para reconstruir os eixos 2D da peça com escala, orientação/mirror e rotação planar originais. O ponto de origem continua considerando a transformação própria da mesh (incluindo seu deslocamento). A rotação fora do plano da própria mesh é ignorada como esperado do Reset; a animação continua acompanhando a translação do osso dominante. `Flip horizontal` manual e `MeshRotationDegrees` seguem independentes.
+- Não alterado o skinning padrão nem outras meshes com `Reset deform` desativado; nenhuma regravação de FBX, PNG, UVs, materiais, ordem de camadas ou README.
+- Testes na suite VLoteSmoke com a hierarquia e limites reais de `42Head`/`Face4`: preserva 530×, mantém sinal invertido X da raiz, ocupa a mesma região visual de `Face4`, acompanha translação animada, preserva geometria original e volta a passar pelos testes já existentes.
+- Mudanças em `AnimationPlayer.cs`, `MeshPoseCorrection.cs`, `SceneRenderer.cs`, `tests/VLoteSmoke/Program.cs`, csproj e CHANGELOG. Ainda é necessário teste visual no Windows com `cg2.fbx`; confira `Reset deform` ligado na cabeça e `Flip horizontal` manual desligado antes de salvar perfil.
+
 ## VLote 1.1.6 — 2026-11-12 — Flip horizontal individual da mesh
 
 - Adicionado **Flip horizontal (↔)** ao `Edit mesh shape`, independente dos controles de rotação e Reset deform. É espelhamento real esquerda/direita da **mesh escolhida** em torno do próprio centro, não um giro de 180° no plano ou rotação do personagem.
