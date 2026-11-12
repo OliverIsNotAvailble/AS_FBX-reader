@@ -783,9 +783,15 @@ public sealed class MainForm : Form
                 ? $" | {_player.RestoredCollapsedMeshes} zero-scale meshes restored"
                 : string.Empty;
 
+            var (linked, byName, missing) = _session.TextureDiagnostics();
+            var textureNote = $" | textures: {linked} linked + {byName} matched by material name";
+            if (missing > 0)
+                textureNote += $" | {missing} unresolved (check textures/ folder)";
+
             _status.Text =
                 $"{Path.GetFileName(dialog.FileName)} | {_session.Parts.Count} parts | " +
-                $"{_session.Animations.Count} animations{duplicateNote}{scaleNote}{bindNote} | drag parts into groups";
+                $"{_session.Animations.Count} animations{duplicateNote}{scaleNote}{bindNote}" +
+                textureNote + " | drag parts into groups";
         }
         catch (Exception ex)
         {

@@ -4,6 +4,15 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## 0.2.4 — 2026-11-11 — Recuperação automática de texturas soltas em FBX
+
+- Corrigido caso de FBX com geometria, materiais e objetos Texture/Video exportados individualmente, mas sem ligações Texture → Material::Diffuse (como cg1.fbx). O Reader anteriormente retornava caminho vazio para cada material, pintava todas as meshes de branco no preview/3D/export e abria o editor de mesh sem PNG.
+- `FbxSession.ResolveTexturePath` agora mantém a ligação Diffuse existente quando o arquivo realmente existe e faz **fallback estrito por nome de material** para PNG/JPG/BMP/TIFF presentes na pasta do FBX ou na subpasta `textures`/`texture`/`images`. A indexação ocorre uma única vez na abertura, sem buscar o disco a cada quadro. Também recupera slots Diffuse antigos com caminhos absolutos quebrados usando o nome do arquivo.
+- O fallback é reutilizado pelo renderizador, editor de malha e função Copy mesh, mantendo os mesmos índices de material, geometria, UV e ordem de camadas. No carregamento, a barra de status mostra quantos materiais vieram com Diffuse, quantos foram recuperados por nome e quantos continuam sem textura.
+- Editor de mesh agora informa explicitamente quando falta o arquivo PNG, em vez de exibir só a malha vazia; caso encontrado, identifica o nome da textura carregada.
+- Diagnóstico do FBX de exemplo: nomes de 48 dos 49 materiais coincidem com os nomes das PNGs referenciadas no FBX, apesar da ausência de conexões Diffuse. Uma nomenclatura distinta (`shirt_19_legR` vs `shirt2_19_legR2`) pode exigir associação manual; o programa evita escolher um arquivo incorreto.
+- Arquivos: `FbxSession.cs`, `MainForm.cs`, `MeshDeformForm.cs`, `AS.FBXReader.csproj`, CHANGELOG. README mantido. Build Windows/.NET 9 em CI e teste visual com PNGs extraídas ainda necessários.
+
 ## 0.2.3 — 2026-10-09
 
 - Fixed accidental rename while selecting batches with Ctrl/Shift: WinForms'

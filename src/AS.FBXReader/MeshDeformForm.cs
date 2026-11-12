@@ -31,9 +31,15 @@ public sealed class MeshDeformForm : Form
         AutoScaleMode = AutoScaleMode.Font;
         Font = new Font("Segoe UI", 10f);
 
+        var textureAvailable = !string.IsNullOrWhiteSpace(texturePath) &&
+            File.Exists(texturePath);
         _hint = new Label
         {
-            Text = "Drag a vertex; Ctrl+click selects several. Right-click a selected vertex to reset the group.",
+            Text = textureAvailable
+                ? $"PNG: {Path.GetFileName(texturePath)} | Drag vertices; Ctrl+click selects several."
+                : "TEXTURE NOT FOUND: check the textures/ folder and the FBX material name. " +
+                  "The editor can show mesh geometry, but not its PNG.",
+            ForeColor = textureAvailable ? Color.Black : Color.Firebrick,
             AutoSize = true,
             Anchor = AnchorStyles.Left
         };
