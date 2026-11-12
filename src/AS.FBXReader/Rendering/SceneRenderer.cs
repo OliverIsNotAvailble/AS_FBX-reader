@@ -479,31 +479,48 @@ public sealed class SceneRenderer : IDisposable
                 if (part.VertexOffsets.TryGetValue(i, out var edit))
                     local[i] += new Vector3(edit.X, edit.Y, 0f);
             }
-            var animatedTranslation = Vector3.Zero;
-            if (mesh.HasBones && mesh.BoneCount > 0)
-            {
-                var mainBone = mesh.Bones
-                    .OrderByDescending(b => b.VertexWeights.Sum(w => w.Weight))
-                    .FirstOrDefault();
-                if (mainBone is not null && !string.IsNullOrWhiteSpace(mainBone.Name))
-                {
-                    var animated = _player.GetGlobalTransform(mainBone.Name);
-                    var rest = _player.GetBindGlobalTransform(mainBone.Name);
-                    animatedTranslation = new Vector3(
-                        animated.M41 - rest.M41, animated.M42 - rest.M42, 0f);
-                }
-            }
-            else
-            {
-                var animated = _player.GetGlobalTransform(node.Name);
-                var rest = _player.GetBindGlobalTransform(node.Name);
-                animatedTranslation = new Vector3(
-                    animated.M41 - rest.M41, animated.M42 - rest.M42, 0f);
-            }
             var corrected = MeshPoseCorrection.Undeform(
                 local, _player.GetBindGlobalTransform(node.Name),
                 _player.GetBindParentGlobalTransform(node.Name),
-                animatedTranslation);
+                Vector3.Zero);
+
+            // Determine the anchor in the very same world coordinate system
+            // as the correctly scaled and oriented 2D silhouette.
+            var restAnchor = Vector3.Zero;
+            foreach (var point in corrected)
+                restAnchor += point;
+            if (corrected.Length > 0)
+                restAnchor /= corrected.Length;
+
+            // Respect the bone explicitly selected in "Edit bone binding".
+            // Previously ResetDeform always ignored FollowBoneName and picked
+            // the highest-weight bone, so that menu never affected Reset.
+            var followBone = part.FollowBoneName;
+            if (string.IsNullOrWhiteSpace(followBone) ||
+                _session?.NodesByName.ContainsKey(followBone) != true)
+            {
+                followBone = mesh.HasBones && mesh.BoneCount > 0
+                    ? mesh.Bones
+                        .OrderByDescending(bone =>
+                            bone.VertexWeights.Sum(weight => weight.Weight))
+                        .Select(bone => bone.Name)
+                        .FirstOrDefault()
+                    : null;
+            }
+            if (string.IsNullOrWhiteSpace(followBone) ||
+                _session?.NodesByName.ContainsKey(followBone) != true)
+                followBone = node.Name;
+
+            // Follow the *mesh attachment point* through the full rest and
+            // animated bone transforms, not just the bone's global origin.
+            // Bone rotation, pivot offset and mirrored parent axes affect
+            // movement direction, but not the shape of this rigid sprite.
+            var animatedTranslation = MeshPoseCorrection.MotionAtAnchor(
+                _player.GetBindGlobalTransform(followBone),
+                _player.GetGlobalTransform(followBone),
+                restAnchor);
+            for (var i = 0; i < corrected.Length; i++)
+                corrected[i] += animatedTranslation;
             MeshPoseCorrection.RotateAroundCenter(corrected, part.MeshRotationDegrees);
             if (part.MeshFlipHorizontal)
                 MeshPoseCorrection.FlipHorizontal(corrected);

@@ -136,6 +136,47 @@ var cg2Move = MeshPoseCorrection.Undeform(cg2HeadCorners, cg2HeadRest,
 Check(MathF.Abs(cg2Move[0].X - cg2Restored[0].X - 24f) < 0.001f &&
       MathF.Abs(cg2Move[0].Y - cg2Restored[0].Y + 12f) < 0.001f,
     "cg2 corrected mesh still follows animated bone translation");
+// Reset deform motion must follow the mesh's point on the rig, not the
+// bone's global ORIGIN. Rotating a bone in-place leaves M41/M42 unchanged,
+// which made the old implementation animate the head in the wrong direction
+// (or not at all) with cg2's pivot and mirrored hierarchy.
+var pivotRest = OpenTK.Mathematics.Matrix4.CreateTranslation(10f, 20f, 0f);
+var pivotAnimated = OpenTK.Mathematics.Matrix4.CreateRotationZ(
+    MathF.PI / 2f) * pivotRest;
+var attachmentRest = new OpenTK.Mathematics.Vector3(12f, 20f, 0f);
+var attachmentMovement = MeshPoseCorrection.MotionAtAnchor(
+    pivotRest, pivotAnimated, attachmentRest);
+Check(MathF.Abs(pivotAnimated.M41 - pivotRest.M41) < 0.0001f &&
+      MathF.Abs(pivotAnimated.M42 - pivotRest.M42) < 0.0001f &&
+      MathF.Abs(attachmentMovement.X + 2f) < 0.0001f &&
+      MathF.Abs(attachmentMovement.Y - 2f) < 0.0001f,
+    "Reset follows actual anchor after bone rotates even when bone origin stays still");
+
+// The same calculation must behave correctly with cg2's negative X scale,
+// and leave the restored sprite silhouette unchanged.
+var mirroredRest = OpenTK.Mathematics.Matrix4.CreateScale(-530f, 530f, 1f);
+var mirroredAnimated = OpenTK.Mathematics.Matrix4.CreateRotationZ(
+    MathF.PI / 12f) * mirroredRest;
+var mirroredAnchor = new OpenTK.Mathematics.Vector3(-600f, 350f, 0f);
+var mirrorDelta = MeshPoseCorrection.MotionAtAnchor(
+    mirroredRest, mirroredAnimated, mirroredAnchor);
+var localAnchor = OpenTK.Mathematics.Vector3.TransformPosition(
+    mirroredAnchor, mirroredRest.Inverted());
+var expectedWorld = OpenTK.Mathematics.Vector3.TransformPosition(
+    localAnchor, mirroredAnimated);
+Check((mirroredAnchor + mirrorDelta - expectedWorld).Length < 0.0001f,
+    "Reset anchor follows rig correctly under negative-X parent scale");
+var onlyTranslation = MeshPoseCorrection.MotionAtAnchor(
+    pivotRest, OpenTK.Mathematics.Matrix4.CreateTranslation(13f, 16f, 0f),
+    attachmentRest);
+Check(MathF.Abs(onlyTranslation.X - 3f) < 0.0001f &&
+      MathF.Abs(onlyTranslation.Y + 4f) < 0.0001f,
+    "Reset follows an ordinary translation unchanged");
+var afterResetMovement = cg2Restored.Select(p => p + mirrorDelta).ToArray();
+Check((afterResetMovement[1] - afterResetMovement[0] -
+       (cg2Restored[1] - cg2Restored[0])).Length < 0.0001f,
+    "Reset bone motion translates the 530x head without deformation");
+
 var rotatedLeg = straightLeg.ToArray();
 MeshPoseCorrection.RotateAroundCenter(rotatedLeg, 90f);
 Check(MathF.Abs((rotatedLeg[1] - rotatedLeg[0]).Length -

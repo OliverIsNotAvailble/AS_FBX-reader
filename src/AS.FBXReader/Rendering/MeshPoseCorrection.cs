@@ -41,6 +41,32 @@ public static class MeshPoseCorrection
     }
 
     /// <summary>
+    /// Move the mesh's rest-space anchor with a selected animated rig bone.
+    /// Using just animatedBone.M41/M42 minus bindBone.M41/M42 follows the
+    /// bone ORIGIN, not the part's attachment point. This is wrong when the
+    /// bone rotates around a pivot or lives under mirrored/rotated parents.
+    ///
+    /// Convert the world-space mesh anchor to the bone's bind-local frame,
+    /// evaluate it with the animated global transform, then take the delta.
+    /// This follows bone motion without deforming the mesh silhouette.
+    /// </summary>
+    public static Vector3 MotionAtAnchor(
+        Matrix4 boneRestGlobal, Matrix4 boneAnimatedGlobal,
+        Vector3 worldRestAnchor)
+    {
+        var inverseRest = boneRestGlobal.Inverted();
+        var bindLocalAnchor =
+            Vector3.TransformPosition(worldRestAnchor, inverseRest);
+        var animatedAnchor =
+            Vector3.TransformPosition(bindLocalAnchor, boneAnimatedGlobal);
+        var delta = animatedAnchor - worldRestAnchor;
+        return float.IsFinite(delta.X) && float.IsFinite(delta.Y) &&
+               float.IsFinite(delta.Z)
+            ? delta
+            : Vector3.Zero;
+    }
+
+    /// <summary>
     /// Horizontal mirror of the drawable around its own center. Only X
     /// changes: Y, Z, UV coordinates, mesh topology, animation and bones are
     /// untouched. Applying it twice restores the previous positions.

@@ -4,6 +4,15 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## VLote 1.1.8 — 2026-11-12 — Reset deform segue movimento real do osso (cg2 Head/Face)
+
+- Corrigido o movimento invertido da `42Head` quando `Reset deform` estava ligado: a implementação anterior somava apenas a diferença `boneAnimated.M41/M42 - boneRest.M41/M42`, o que representa deslocamento da **origem do osso**, não o deslocamento da **mesh presa nele**. Essa aproximação erra quando a hierarquia tem pivôs, rotação e eixos espelhados (como cg2), causando movimento oposto ou sem acompanhamento relativo aos olhos/cabelo.
+- Agora o Reader usa a posição **da âncora da própria mesh na pose de repouso** (centro da malha corrigida): transforma a âncora do mundo para o espaço local do osso na pose REST, calcula sua posição no mundo com a transformação animada do osso e desloca a peça somente pela diferença real. Preserva o contorno 2D rígido, a escala 530×, a orientação herdada e o deslocamento XY; não volta a aplicar skinning por vértice.
+- **Edit bone binding agora funciona com Reset deform ativado.** Se o usuário escolher um osso válido para a mesh, `FollowBoneName` passa a controlar a âncora; caso contrário usa o osso com maior peso ou o próprio nó da mesh. Anteriormente o bloco Reset ignorava essa escolha.
+- O fluxo padrão de animação, pesos, outros meshes, flip horizontal, rotação, PNG/UVs e os arquivos originais do FBX **não foram alterados**. As correções continuam individuais, reversíveis e salvas no mesmo perfil.
+- Novos testes em `VLoteSmoke`: osso girando no próprio pivô (origem imóvel, mas âncora em movimento), osso com escala X negativa do cg2, movimento de translação, preservação da forma da cabeça em 530×. Build e teste visual no FBX real ainda necessários.
+- Arquivos: `Rendering/MeshPoseCorrection.cs`, `Rendering/SceneRenderer.cs`, `tests/VLoteSmoke/Program.cs`, csproj e CHANGELOG. Apenas branch VLote; main vazia e README intocado.
+
 ## VLote 1.1.7 — 2026-11-12 — Corrigido Reset deform que espelhava e sumia com outras meshes
 
 - Analisado o `cg2.fbx` real enviado pelo usuário e as telas de `42Head` e `Face4`: a raiz `cg2` contém **escala 530×** e orientação horizontal invertida (rotações −180° X e +180° Z); a mesh `42Head` tem rotação local X ≈ 90° e coordenadas de origem entre X 0,88–1,32 e Y 0,39–0,92, enquanto `Face4` está na escala/orientação da raiz.
