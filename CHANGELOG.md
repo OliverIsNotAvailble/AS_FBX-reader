@@ -5,6 +5,8 @@ verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
 ## 0.2.4 — 2026-11-11 — Recuperação automática de texturas soltas em FBX
+- Distribuição: workflow de CI passa a executar `dotnet publish` Windows x64 self-contained após o build, verificar `AS_FBX-reader.exe` e `runtimes/win-x64/native/assimp.dll` e publicar um ZIP pronto para executar em **GitHub Actions → Artifacts**, retido por 90 dias. O ZIP inclui o runtime .NET para não exigir instalação separada. README inalterado.
+
 
 - Corrigido caso de FBX com geometria, materiais e objetos Texture/Video exportados individualmente, mas sem ligações Texture → Material::Diffuse (como cg1.fbx). O Reader anteriormente retornava caminho vazio para cada material, pintava todas as meshes de branco no preview/3D/export e abria o editor de mesh sem PNG.
 - `FbxSession.ResolveTexturePath` agora mantém a ligação Diffuse existente quando o arquivo realmente existe e faz **fallback estrito por nome de material** para PNG/JPG/BMP/TIFF presentes na pasta do FBX ou na subpasta `textures`/`texture`/`images`. A indexação ocorre uma única vez na abertura, sem buscar o disco a cada quadro. Também recupera slots Diffuse antigos com caminhos absolutos quebrados usando o nome do arquivo.

@@ -12,10 +12,47 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
+
       - name: Restore
         run: dotnet restore .\AS_FBX-reader.sln
+
       - name: Build
         run: dotnet build .\AS_FBX-reader.sln -c Release --no-restore
+
+      # Publish the actual Windows app, not just a successful compilation log.
+      # Self-contained output includes .NET 9 so users can run the EXE directly.
+      - name: Publish Windows x64 executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = Join-Path $env:RUNNER_TEMP "AS_FBX-reader_win-x64"
+          dotnet publish .\src\AS.FBXReader\AS.FBXReader.csproj -c Release -r win-x64 --self-contained true --no-restore -o $output
+          if ($LASTEXITCODE -ne 0) { throw "dotnet publish falhou" }
+
+          $exe = Join-Path $output "AS_FBX-reader.exe"
+          if (!(Test-Path $exe)) { throw "Executavel nao encontrado: $exe" }
+
+          # FbxSession loads Assimp from this exact relative runtime path.
+          $native = Join-Path $output "runtimes\win-x64\native\assimp.dll"
+          if (!(Test-Path $native)) {
+            $built = Join-Path $env:GITHUB_WORKSPACE "src\AS.FBXReader\bin\Release\net9.0-windows\win-x64\runtimes\win-x64\native\assimp.dll"
+            if (!(Test-Path $built)) { throw "assimp.dll ausente no build" }
+            New-Item -ItemType Directory -Force -Path (Split-Path $native) | Out-Null
+            Copy-Item $built $native
+          }
+          "PUBLISH_DIR=$output" >> $env:GITHUB_ENV
+          Write-Host "Pronto: $exe, Assimp: $native"
+
+      # GitHub Actions bundles the published folder as a downloadable ZIP.
+      - name: Upload executable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: AS_FBX-reader_v0.2.4_win-x64
+          path: ${{ env.PUBLISH_DIR }}/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
