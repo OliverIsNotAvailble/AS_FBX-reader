@@ -23,6 +23,8 @@ public sealed class ScenePart
     public bool ResetDeform { get; set; }
     // Manual angle in degrees, positive = counterclockwise.
     public float MeshRotationDegrees { get; set; }
+    // Mirror this drawable along its horizontal axis, after animation/rotation.
+    public bool MeshFlipHorizontal { get; set; }
     // Optional rig node to follow rigidly instead of the strongest mesh bone.
     public string? FollowBoneName { get; set; }
     // Per-vertex edits in the mesh's local coordinates, before skinning.

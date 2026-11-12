@@ -15,6 +15,7 @@ public sealed class MeshDeformForm : Form
     private readonly Dictionary<int, VertexOffset> _initial;
     private readonly bool _initialResetDeform;
     private readonly float _initialRotationDegrees;
+    private readonly bool _initialFlipHorizontal;
     private readonly Stack<Dictionary<int, VertexOffset>> _undo = new();
     private readonly MeshCanvas _canvas;
     private readonly Label _hint;
@@ -26,6 +27,7 @@ public sealed class MeshDeformForm : Form
         _initial = Snapshot();
         _initialResetDeform = part.ResetDeform;
         _initialRotationDegrees = part.MeshRotationDegrees;
+        _initialFlipHorizontal = part.MeshFlipHorizontal;
         Text = $"Edit mesh shape — {part.DisplayName}";
         StartPosition = FormStartPosition.CenterParent;
         WindowState = FormWindowState.Maximized;
@@ -164,6 +166,24 @@ public sealed class MeshDeformForm : Form
         resetRotation.Click += (_, _) => rotation.Value = 0;
         toolbar.Controls.Add(resetRotation);
 
+        var flipHorizontal = new CheckBox
+        {
+            Text = "Flip horizontal (↔)",
+            Checked = part.MeshFlipHorizontal,
+            AutoSize = true,
+            Padding = new Padding(10, 5, 5, 0)
+        };
+        flipHorizontal.CheckedChanged += (_, _) =>
+        {
+            part.MeshFlipHorizontal = flipHorizontal.Checked;
+            _canvas.FitView();
+            previewChanged();
+            _hint.Text = flipHorizontal.Checked
+                ? "Flip horizontal ON: mesh espelhada esquerda/direita. Animação preservada."
+                : "Flip horizontal OFF: orientação original restaurada.";
+        };
+        toolbar.Controls.Add(flipHorizontal);
+
         var bottom = new TableLayoutPanel
         {
             Dock = DockStyle.Bottom,
@@ -206,6 +226,7 @@ public sealed class MeshDeformForm : Form
             {
                 _part.ResetDeform = _initialResetDeform;
                 _part.MeshRotationDegrees = _initialRotationDegrees;
+                _part.MeshFlipHorizontal = _initialFlipHorizontal;
                 Restore(_initial);
             }
         };

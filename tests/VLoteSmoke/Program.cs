@@ -120,6 +120,49 @@ var decoded = System.Text.Json.JsonSerializer.Deserialize<MeshAdjustmentProfile>
 Check(decoded.ResetDeform && decoded.MeshRotationDegrees == -15f,
     "mesh reset and rotation persist as independent profile settings");
 
+// Flip X is applied AFTER evaluating the skinned animation, not instead of
+// the skinning. Preserve the pose's height/deformation and all texture UVs.
+var animatedMesh = new[] {
+    new OpenTK.Mathematics.Vector3(1f, 5f, 0.1f),
+    new OpenTK.Mathematics.Vector3(5f, 2f, 0.3f),
+    new OpenTK.Mathematics.Vector3(10f, 9f, 0.4f)
+};
+var originalPose = animatedMesh.ToArray();
+var originalCenter = animatedMesh.Average(p => p.X);
+MeshPoseCorrection.FlipHorizontal(animatedMesh);
+for (var i = 0; i < animatedMesh.Length; i++)
+{
+    Check(MathF.Abs(animatedMesh[i].X -
+                     (2f * originalCenter - originalPose[i].X)) < 0.0001f &&
+          animatedMesh[i].Y == originalPose[i].Y &&
+          animatedMesh[i].Z == originalPose[i].Z,
+        $"Flip horizontal changes only the animated mesh's X, vertex {i}");
+}
+MeshPoseCorrection.FlipHorizontal(animatedMesh);
+Check(animatedMesh.Zip(originalPose).All(pair =>
+        (pair.First - pair.Second).Length < 0.0001f),
+    "flipping twice restores the exact animated mesh pose");
+var rotatedThenFlipped = originalPose.ToArray();
+MeshPoseCorrection.RotateAroundCenter(rotatedThenFlipped, 30f);
+var rotatedPose = rotatedThenFlipped.ToArray();
+MeshPoseCorrection.FlipHorizontal(rotatedThenFlipped);
+Check(rotatedThenFlipped.Zip(rotatedPose).All(pair =>
+        pair.First.Y == pair.Second.Y && pair.First.Z == pair.Second.Z),
+    "flip horizontal also works after manual mesh rotation");
+var unrelatedMesh = new ScenePart {
+    Id = "other2", Name = "other2", NodeName = "node2", MeshIndex = 0
+};
+Check(!unrelatedMesh.MeshFlipHorizontal,
+    "other meshes are not flipped by default");
+var flippedProfile = new MeshAdjustmentProfile {
+    MeshFlipHorizontal = true, MeshRotationDegrees = 15f
+};
+var flippedJson = System.Text.Json.JsonSerializer.Serialize(flippedProfile);
+var readFlip = System.Text.Json.JsonSerializer.Deserialize<MeshAdjustmentProfile>(flippedJson)!;
+Check(readFlip.MeshFlipHorizontal && readFlip.MeshRotationDegrees == 15f,
+    "horizontal mesh flip persists independently of rotation");
+
+
 // The same center-crop geometry must be used for the live OpenGL preview
 // and all offscreen export resolutions. No distortion, no letterbox.
 var imageSquare = BackgroundImageLayout.Cover(1024, 1024, 1024, 1024);

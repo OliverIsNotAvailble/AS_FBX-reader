@@ -36,6 +36,25 @@ public static class MeshPoseCorrection
         return result;
     }
 
+    /// <summary>
+    /// Horizontal mirror of the drawable around its own center. Only X
+    /// changes: Y, Z, UV coordinates, mesh topology, animation and bones are
+    /// untouched. Applying it twice restores the previous positions.
+    /// </summary>
+    public static void FlipHorizontal(Vector3[] points)
+    {
+        if (points.Length == 0)
+            return;
+
+        var centerX = 0f;
+        foreach (var point in points)
+            centerX += point.X;
+        centerX /= points.Length;
+
+        for (var i = 0; i < points.Length; i++)
+            points[i].X = 2f * centerX - points[i].X;
+    }
+
     public static void RotateAroundCenter(Vector3[] points, float degrees)
     {
         if (points.Length == 0 || !float.IsFinite(degrees) ||

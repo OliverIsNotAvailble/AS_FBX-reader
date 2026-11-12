@@ -4,6 +4,14 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## VLote 1.1.6 — 2026-11-12 — Flip horizontal individual da mesh
+
+- Adicionado **Flip horizontal (↔)** ao `Edit mesh shape`, independente dos controles de rotação e Reset deform. É espelhamento real esquerda/direita da **mesh escolhida** em torno do próprio centro, não um giro de 180° no plano ou rotação do personagem.
+- O espelhamento roda sobre **posições já animadas/skinned e rotacionadas manualmente**, no mesmo `SceneRenderer` usado no preview e na exportação. Portanto, não é necessário habilitar `Reset deform` e o movimento dos ossos permanece normal; o flip altera apenas X dos vértices finais, sem editar UVs, atlas, índices, materiais, outros meshes ou arquivos FBX. O renderizador já desativa OpenGL face-culling, permitindo mudar a orientação dos triângulos.
+- A edição de pontos apresenta a orientação espelhada e permite mexer nos vértices localmente; o toggle provoca atualização no preview. `Apply` mantém a escolha; `Cancel` restaura o estado inicial. Estado individual guardado como `MeshFlipHorizontal` no perfil e copiado ao duplicar uma mesh; perfis antigos carregam com false.
+- Testes smoke cobrem espelhamento de mesh animada não simétrica, preservação Y/Z, reversibilidade, composição com rotação, outros meshes inalterados e serialização do perfil. Arquivos: `MeshPoseCorrection.cs`, `SceneRenderer.cs`, `MeshDeformForm.cs`, `ScenePart.cs`, `VisibilityProfile.cs`, `FbxSession.cs`, `MainForm.cs`, testes, projeto e CHANGELOG. README e main intocados.
+- Validação visual na máquina com o FBX real segue necessária; o reset deform anterior não foi alterado nesta versão.
+
 ## VLote 1.1.5 — 2026-11-12 — Reset deform e rotação por mesh (Edit mesh shape)
 
 - Adicionados controles individuais **Reset deform (forma original)** e **Rotação da mesh (−360° a +360°, padrão 0°)** dentro do editor. Botão `Rotação 0°` restaura só o ângulo, sem alterar outros ajustes. Checkboxes não afetam outras malhas ou a geometria gravada no FBX; Cancel restaura os valores anteriores, Apply conserva os ajustes.

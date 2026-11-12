@@ -56,6 +56,7 @@ public sealed class MeshAdjustmentProfile
     public bool PreserveShape { get; set; }
     public bool ResetDeform { get; set; }
     public float MeshRotationDegrees { get; set; }
+    public bool MeshFlipHorizontal { get; set; }
     public string? FollowBoneName { get; set; }
     public List<VertexOffset> VertexOffsets { get; set; } = new();
 }

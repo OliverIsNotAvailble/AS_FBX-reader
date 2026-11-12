@@ -503,6 +503,8 @@ public sealed class SceneRenderer : IDisposable
             var corrected = MeshPoseCorrection.Undeform(
                 local, _player.GetBindGlobalTransform(node.Name), animatedTranslation);
             MeshPoseCorrection.RotateAroundCenter(corrected, part.MeshRotationDegrees);
+            if (part.MeshFlipHorizontal)
+                MeshPoseCorrection.FlipHorizontal(corrected);
             var pos = new Vector3(part.OffsetX, part.OffsetY, 0f);
             for (var i = 0; i < corrected.Length; i++)
                 corrected[i] += pos;
@@ -575,6 +577,10 @@ public sealed class SceneRenderer : IDisposable
         }
 
         MeshPoseCorrection.RotateAroundCenter(positions, part.MeshRotationDegrees);
+        // Apply AFTER skinning and manual rotation: no need to reset deform
+        // or disable animation to mirror one drawable left <-> right.
+        if (part.MeshFlipHorizontal)
+            MeshPoseCorrection.FlipHorizontal(positions);
         return positions;
     }
 

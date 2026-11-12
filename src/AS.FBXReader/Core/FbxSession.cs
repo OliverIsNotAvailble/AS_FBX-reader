@@ -101,6 +101,7 @@ public sealed class FbxSession : IDisposable
             PreserveShape = source.PreserveShape,
             ResetDeform = source.ResetDeform,
             MeshRotationDegrees = source.MeshRotationDegrees,
+            MeshFlipHorizontal = source.MeshFlipHorizontal,
             FollowBoneName = source.FollowBoneName
         };
         foreach (var entry in source.VertexOffsets)

@@ -1519,6 +1519,8 @@ public sealed partial class MainForm : Form
                     }).ToArray();
                     MeshPoseCorrection.RotateAroundCenter(
                         points, part.MeshRotationDegrees);
+                    if (part.MeshFlipHorizontal)
+                        MeshPoseCorrection.FlipHorizontal(points);
                     return points.Select(pt => new PointF(pt.X, pt.Y)).ToArray();
                 },
                 _viewer.InvalidateScene);
@@ -1713,7 +1715,7 @@ public sealed partial class MainForm : Form
             MeshAdjustments = _session.Parts
                 .Where(p => p.OffsetX != 0f || p.OffsetY != 0f || p.RebuildBindPose ||
                             p.PreserveShape || p.ResetDeform || p.MeshRotationDegrees != 0f ||
-                             p.FollowBoneName is not null || p.VertexOffsets.Count > 0)
+                             p.MeshFlipHorizontal || p.FollowBoneName is not null || p.VertexOffsets.Count > 0)
                 .ToDictionary(
                     p => p.Id,
                     p => new MeshAdjustmentProfile
@@ -1724,6 +1726,7 @@ public sealed partial class MainForm : Form
                         PreserveShape = p.PreserveShape,
                         ResetDeform = p.ResetDeform,
                         MeshRotationDegrees = p.MeshRotationDegrees,
+                        MeshFlipHorizontal = p.MeshFlipHorizontal,
                         FollowBoneName = p.FollowBoneName,
                         VertexOffsets = p.VertexOffsets.Values
                             .OrderBy(x => x.VertexIndex)
@@ -1855,6 +1858,7 @@ public sealed partial class MainForm : Form
             var angle = adjustment?.MeshRotationDegrees ?? 0f;
             part.MeshRotationDegrees = float.IsFinite(angle)
                 ? Math.Clamp(angle, -360f, 360f) : 0f;
+            part.MeshFlipHorizontal = adjustment?.MeshFlipHorizontal ?? false;
             part.FollowBoneName = adjustment?.FollowBoneName is string boneName &&
                 _session.NodesByName.ContainsKey(boneName) ? boneName : null;
             part.VertexOffsets.Clear();
