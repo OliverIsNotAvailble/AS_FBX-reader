@@ -806,7 +806,7 @@ public sealed partial class MainForm : Form
             ? $" | {_session.DuplicateModelNamesFixed} duplicate FBX Model names isolated"
             : string.Empty;
         var bindNote = _player.RecoveredBoneOffsets > 0
-            ? $" | {_player.RecoveredBoneOffsets} broken skin binds recovered"
+            ? $" | {_player.RecoveredBoneOffsets} inconsistent skin binds recovered"
             : string.Empty;
         var rawScaleNote = _session.RawScaleTrackCount > 0
             ? $" | raw FBX visibility: {_session.RawScaleTrackCount} curves in {_session.RawScaleAnimationCount} takes"
@@ -1504,9 +1504,15 @@ public sealed partial class MainForm : Form
         _player.Playing = false;
         try
         {
+            // Mesh editor must show the original LOCAL vertices and UV
+            // layout, not an already bent/skinned frame from the animation.
             using var editor = new MeshDeformForm(part, mesh, texture,
-                () => _viewer.GetPartWorldPositions(part)
-                    .Select(p => new PointF(p.X, p.Y)).ToArray(),
+                () => mesh.Vertices.Select((vertex, i) =>
+                {
+                    var dx = part.VertexOffsets.TryGetValue(i, out var edit) ? edit.X : 0f;
+                    var dy = edit?.Y ?? 0f;
+                    return new PointF(vertex.X + dx, vertex.Y + dy);
+                }).ToArray(),
                 _viewer.InvalidateScene);
             if (editor.ShowDialog(this) == DialogResult.OK)
                 _status.Text = $"Mesh shape updated: {part.DisplayName}. Save profile to keep it.";

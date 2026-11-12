@@ -76,11 +76,22 @@ public sealed class AnimationPlayer
             return;
 
         _root = BuildTree(_session.Scene.RootNode, null);
-        // Some AssetStudio SpriteSkin FBXs contain NaNs in the skin clusters'
-        // Transform/TransformLink matrices. Assimp passes those through to the
-        // bone offsets; count them here so the user can see the recovery.
-        RecoveredBoneOffsets = _session.Scene.Meshes
-            .Sum(mesh => mesh.Bones.Count(bone => !IsFinite(MatrixUtil.ToOpenTk(bone.OffsetMatrix))));
+        // Count finite-but-corrupt bind offsets, not only NaN offsets.
+        RecoveredBoneOffsets = 0;
+        foreach (var part in _session.Parts)
+        {
+            if (part.MeshIndex < 0 || part.MeshIndex >= _session.Scene.MeshCount ||
+                !_states.TryGetValue(part.NodeName, out var meshState))
+                continue;
+            foreach (var bone in _session.Scene.Meshes[part.MeshIndex].Bones)
+            {
+                if (_states.TryGetValue(bone.Name, out var boneState) &&
+                    BindOffsetRecovery.NeedsRepair(MatrixUtil.ToOpenTk(bone.OffsetMatrix),
+                        meshState.BindGlobal, boneState.BindGlobal) &&
+                    BindOffsetRecovery.TryRepair(meshState.BindGlobal, boneState.BindGlobal, out _))
+                    RecoveredBoneOffsets++;
+            }
+        }
         SelectAnimation(-1);
     }
 
@@ -234,15 +245,14 @@ public sealed class AnimationPlayer
             if (_states.TryGetValue(meshNode.Name, out var meshState) &&
                 _states.TryGetValue(bone.Name, out var boneState))
             {
-                if (rebuildBindPose || meshState.CollapsedMesh || !IsFinite(offset))
+                if (rebuildBindPose || meshState.CollapsedMesh ||
+                    BindOffsetRecovery.NeedsRepair(
+                        offset, meshState.BindGlobal, boneState.BindGlobal))
                 {
-                    // Row-vector bind pose: meshBind * inverse(boneBind).
-                    // Assimp can normalize a broken FBX bind into a finite but
-                    // unusable matrix. A collapsed mesh always needs recovery;
-                    // healthy meshes keep their original offsets.
-                    var inverseBoneBind = boneState.BindGlobal.Inverted();
-                    var recovered = meshState.BindGlobal * inverseBoneBind;
-                    if (IsFinite(recovered))
+                    // Only recover inconsistent skin binds automatically.
+                    // Correct originals retain normal multi-bone deformation.
+                    if (BindOffsetRecovery.TryRepair(
+                        meshState.BindGlobal, boneState.BindGlobal, out var recovered))
                         offset = recovered;
                 }
             }

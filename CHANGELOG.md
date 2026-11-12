@@ -4,6 +4,13 @@ Keep this file updated whenever the reader changes. Record the behavior, files,
 verification, and remaining limits in the same commit. Read it alongside the
 current code when resuming work in a later conversation.
 
+## VLote 1.1.4 — 2026-11-12 — Correção da mesh torta (bind e editor)
+
+- Diagnóstico do `cg10.fbx` anexado: os 2.327 vértices da `3_legL1`, 2.809 da `5_pigu` e 1.594 da `6_yao` reproduzem fielmente as UVs das PNGs por uma única transformação afim, com erro máximo menor que 0,000001 unidade. A deformação apresentada no editor não é causada pelo formato da PNG nem pela geometria original.
+- O `Edit mesh shape` agora usa **vértices locais originais (+ edições manuais)**, em vez das posições já modificadas pelo skinning da pose atual. Assim mostra o contorno compatível com a PNG mesmo quando os ossos foram importados errados.
+- A classe `BindOffsetRecovery` valida offsets de ossos na pose inicial, onde `offset * boneBind * inverse(meshBind)` deve equivaler à identidade. Recalcula automaticamente somente offsets incompatíveis, inclusive quando têm números finitos porém impossíveis (p. ex. matrizes de escala em centenas de unidades). Binds saudáveis permanecem intactos; os recuperados são contados no status.
+- Testes em `VLoteSmoke` para bind normal, matriz incorreta mas finita, reconstrução, matriz singular e arredondamento. Mudanças apenas na VLote; README não alterado. Confirmar visualmente o resultado de `cg10.fbx` e outras poses na máquina do usuário.
+
 ## VLote 1.1.3 — 2026-11-11 — Texturas individuais recuperadas + inicializador BAT
 
 - Portada para **VLote** a correção de texturas que funcionou na `main`: quando um FBX não vincula Texture/Video ao `Material::Diffuse`, procurar PNG/JPG por **nome exato do material** na pasta do FBX e nas subpastas imediatas `textures`, `texture` e `images`, preservando ligações Diffuse existentes e o fallback VLote para arquivos de atlas ao lado do FBX.

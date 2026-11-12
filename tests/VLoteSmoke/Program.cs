@@ -59,6 +59,26 @@ using (var emptySession = new FbxSession())
         "rebuilding a model clears stale take and playback state");
 }
 
+// Guard against finite but absurd cluster bind offsets that stretch sprites.
+var meshBind = OpenTK.Mathematics.Matrix4.CreateTranslation(1.5f, -0.2f, 0f);
+var boneBind = OpenTK.Mathematics.Matrix4.CreateTranslation(1.8f, 0.4f, 0f);
+var good = meshBind * boneBind.Inverted();
+Check(!BindOffsetRecovery.NeedsRepair(good, meshBind, boneBind),
+    "healthy skin offset is preserved");
+var invalid = OpenTK.Mathematics.Matrix4.CreateScale(540f) *
+    OpenTK.Mathematics.Matrix4.CreateTranslation(500f, -250f, 0f);
+Check(BindOffsetRecovery.NeedsRepair(invalid, meshBind, boneBind),
+    "finite oversized skin offset is detected");
+Check(BindOffsetRecovery.TryRepair(meshBind, boneBind, out var recovered) &&
+      !BindOffsetRecovery.NeedsRepair(recovered, meshBind, boneBind),
+    "reconstructed bind restores original 2D mesh without stretching");
+var slightlyOff = good;
+slightlyOff.M41 += 0.01f;
+Check(!BindOffsetRecovery.NeedsRepair(slightlyOff, meshBind, boneBind),
+    "small numeric drift is tolerated");
+Check(BindOffsetRecovery.NeedsRepair(new OpenTK.Mathematics.Matrix4(),
+    meshBind, boneBind), "singular offset is identified");
+
 // The same center-crop geometry must be used for the live OpenGL preview
 // and all offscreen export resolutions. No distortion, no letterbox.
 var imageSquare = BackgroundImageLayout.Cover(1024, 1024, 1024, 1024);
